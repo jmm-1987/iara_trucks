@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Vehículos - Gestión de Flotas{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4">Vehículos</h1>
+<div class="mb-3">
+    <a href="{{ url_for('web.vehicle_create') }}" class="btn btn-primary">
+        <i class="bi bi-plus-circle me-1"></i> Nuevo vehículo
+    </a>
+</div>
+<div class="card">
+    <div class="card-body">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Matrícula</th>
+                    <th>Alias</th>
+                    <th>Marca</th>
+                    <th>Modelo</th>
+                    <th>Estado</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for v in pagination.items %}
+                <tr>
+                    <td><strong>{{ v.plate }}</strong></td>
+                    <td>{{ v.alias or '-' }}</td>
+                    <td>{{ v.brand or '-' }}</td>
+                    <td>{{ v.model or '-' }}</td>
+                    <td>
+                        {% if v.active %}
+                        <span class="badge bg-success">Activo</span>
+                        {% else %}
+                        <span class="badge bg-secondary">Inactivo</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="{{ url_for('web.vehicle_edit', vid=v.id) }}" class="btn btn-sm btn-outline-secondary">Editar</a>
+                        {% if v.active %}
+                        <form method="post" action="{{ url_for('web.vehicle_delete', vid=v.id) }}" class="d-inline">
+                            <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('¿Desactivar vehículo?')">Desactivar</button>
+                        </form>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% if pagination.pages > 1 %}
+        <nav>
+            <ul class="pagination pagination-sm">
+                {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                    {% if p %}
+                    <li class="page-item {% if p == pagination.page %}active{% endif %}">
+                        <a class="page-link" href="{{ url_for('web.vehicle_list', page=p) }}">{{ p }}</a>
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled"><span class="page-link">…</span></li>
+                    {% endif %}
+                {% endfor %}
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

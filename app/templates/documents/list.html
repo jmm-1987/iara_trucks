@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}Documentos - Gestión de Flotas{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4">Documentos</h1>
+<div class="mb-3">
+    <a href="{{ url_for('web.document_upload') }}" class="btn btn-primary">
+        <i class="bi bi-upload me-1"></i> Subir documento
+    </a>
+</div>
+
+<form method="get" class="card mb-3">
+    <div class="card-body">
+        <div class="row g-2">
+            <div class="col-md-2">
+                <select name="doc_type" class="form-select form-select-sm">
+                    <option value="">Todos los tipos</option>
+                    {% for k, v in doc_type_labels.items() %}
+                    <option value="{{ k }}" {% if filters.doc_type == k %}selected{% endif %}>{{ v }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select name="status" class="form-select form-select-sm">
+                    <option value="">Todos los estados</option>
+                    <option value="pending" {% if filters.status == 'pending' %}selected{% endif %}>Pendiente</option>
+                    <option value="processed" {% if filters.status == 'processed' %}selected{% endif %}>Procesado</option>
+                    <option value="error" {% if filters.status == 'error' %}selected{% endif %}>Error</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <select name="vehicle_id" class="form-select form-select-sm">
+                    <option value="">Todos los vehículos</option>
+                    {% for v in vehicles %}
+                    <option value="{{ v.id }}" {% if filters.vehicle_id == v.id %}selected{% endif %}>{{ v.plate }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <input type="date" name="date_from" class="form-control form-control-sm" value="{{ filters.date_from or '' }}" placeholder="Desde">
+            </div>
+            <div class="col-md-2">
+                <input type="date" name="date_to" class="form-control form-control-sm" value="{{ filters.date_to or '' }}" placeholder="Hasta">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-sm btn-outline-primary">Filtrar</button>
+            </div>
+        </div>
+    </div>
+</form>
+
+<div class="card">
+    <div class="card-body">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Vehículo</th>
+                    <th>Tipo</th>
+                    <th>Estado</th>
+                    <th>Fecha</th>
+                    <th>Importe</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for d in pagination.items %}
+                <tr>
+                    <td>{{ d.id }}</td>
+                    <td>{{ d.vehicle.plate if d.vehicle else '-' }}</td>
+                    <td>{{ doc_type_labels.get(d.doc_type, d.doc_type or '-') }}</td>
+                    <td>
+                        {% if d.status == 'processed' %}
+                        <span class="badge bg-success">Procesado</span>
+                        {% elif d.status == 'pending' %}
+                        <span class="badge bg-warning">Pendiente</span>
+                        {% else %}
+                        <span class="badge bg-danger">Error</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ d.uploaded_at.strftime('%d/%m/%Y %H:%M') if d.uploaded_at else '-' }}</td>
+                    <td>{% if d.total_amount %}{{ "%.2f"|format(d.total_amount) }} {{ d.currency or 'EUR' }}{% else %}-{% endif %}</td>
+                    <td>
+                        <a href="{{ url_for('web.document_detail', did=d.id) }}" class="btn btn-sm btn-outline-primary">Ver</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% if pagination.pages > 1 %}
+        <nav>
+            <ul class="pagination pagination-sm">
+                {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                    {% if p %}
+                    <li class="page-item {% if p == pagination.page %}active{% endif %}">
+                        <a class="page-link" href="{{ url_for('web.document_list', page=p, doc_type=filters.doc_type, status=filters.status, vehicle_id=filters.vehicle_id, date_from=filters.date_from, date_to=filters.date_to) }}">{{ p }}</a>
+                    </li>
+                    {% else %}
+                    <li class="page-item disabled"><span class="page-link">…</span></li>
+                    {% endif %}
+                {% endfor %}
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

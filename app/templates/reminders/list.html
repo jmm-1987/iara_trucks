@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Vencimientos - Gestión de Flotas{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4">Próximos vencimientos</h1>
+
+<form method="get" class="mb-3">
+    <select name="vehicle_id" class="form-select form-select-sm d-inline-block w-auto">
+        <option value="">Todos los vehículos</option>
+        {% for v in vehicles %}
+        <option value="{{ v.id }}" {% if vehicle_id == v.id %}selected{% endif %}>{{ v.plate }}</option>
+        {% endfor %}
+    </select>
+    <button type="submit" class="btn btn-sm btn-outline-primary">Filtrar</button>
+</form>
+
+<div class="card">
+    <div class="card-body">
+        {% if reminders %}
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Vehículo</th>
+                    <th>Tipo</th>
+                    <th>Fecha vencimiento</th>
+                    <th>Días restantes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in reminders %}
+                <tr>
+                    <td>{{ r.vehicle_plate }}</td>
+                    <td>{{ r.kind }}</td>
+                    <td>{{ r.due_date }}</td>
+                    <td>
+                        <span class="badge {% if r.days_remaining <= 7 %}bg-danger{% elif r.days_remaining <= 30 %}bg-warning{% else %}bg-secondary{% endif %}">
+                            {{ r.days_remaining }} días
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted mb-0">No hay vencimientos en los próximos 90 días.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

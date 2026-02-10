@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Reportes - Gestión de Flotas{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4">Reportes</h1>
+
+<form method="get" class="card mb-3">
+    <div class="card-body">
+        <div class="row g-2 align-items-end">
+            <div class="col-md-2">
+                <label class="form-label small">Vehículo</label>
+                <select name="vehicle_id" class="form-select form-select-sm">
+                    <option value="">Todos</option>
+                    {% for v in vehicles %}
+                    <option value="{{ v.id }}" {% if filters.vehicle_id == v.id %}selected{% endif %}>{{ v.plate }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Desde</label>
+                <input type="date" name="date_from" class="form-control form-control-sm" value="{{ filters.date_from }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Hasta</label>
+                <input type="date" name="date_to" class="form-control form-control-sm" value="{{ filters.date_to }}">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-sm btn-primary">Filtrar</button>
+            </div>
+        </div>
+    </div>
+</form>
+
+<div class="row mb-3">
+    <div class="col">
+        <a href="{{ url_for('web.report_export', report_type='fuel', vehicle_id=filters.vehicle_id, date_from=filters.date_from, date_to=filters.date_to) }}" class="btn btn-sm btn-outline-success">Exportar combustible CSV</a>
+        <a href="{{ url_for('web.report_export', report_type='expenses', vehicle_id=filters.vehicle_id, date_from=filters.date_from, date_to=filters.date_to) }}" class="btn btn-sm btn-outline-success">Exportar gastos CSV</a>
+        <a href="{{ url_for('web.report_export', report_type='reminders', vehicle_id=filters.vehicle_id) }}" class="btn btn-sm btn-outline-success">Exportar vencimientos CSV</a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-6">
+        <div class="card mb-3">
+            <div class="card-header">Consumo combustible (litros y coste por mes)</div>
+            <div class="card-body">
+                {% if fuel_data %}
+                <table class="table table-sm">
+                    <thead><tr><th>Vehículo</th><th>Mes</th><th>Litros</th><th>Importe</th></tr></thead>
+                    <tbody>
+                        {% for r in fuel_data %}
+                        <tr>
+                            <td>{{ r.vehicle_plate }}</td>
+                            <td>{{ r.month }}</td>
+                            <td>{{ "%.1f"|format(r.total_liters) }}</td>
+                            <td>{{ "%.2f"|format(r.total_amount) }} €</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="text-muted mb-0">Sin datos de combustible.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card mb-3">
+            <div class="card-header">Gastos por categoría</div>
+            <div class="card-body">
+                {% if expense_data %}
+                <table class="table table-sm">
+                    <thead><tr><th>Vehículo</th><th>Categoría</th><th>Total</th></tr></thead>
+                    <tbody>
+                        {% for r in expense_data %}
+                        <tr>
+                            <td>{{ r.vehicle_plate }}</td>
+                            <td>{{ r.category }}</td>
+                            <td>{{ "%.2f"|format(r.total_amount) }} €</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <p class="text-muted mb-0">Sin datos de gastos.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">Próximos vencimientos (90 días)</div>
+    <div class="card-body">
+        {% if reminders_data %}
+        <table class="table table-sm">
+            <thead><tr><th>Vehículo</th><th>Tipo</th><th>Vencimiento</th><th>Días</th></tr></thead>
+            <tbody>
+                {% for r in reminders_data %}
+                <tr>
+                    <td>{{ r.vehicle_plate }}</td>
+                    <td>{{ r.kind }}</td>
+                    <td>{{ r.due_date }}</td>
+                    <td>
+                        <span class="badge {% if r.days_remaining <= 7 %}bg-danger{% elif r.days_remaining <= 30 %}bg-warning{% else %}bg-secondary{% endif %}">
+                            {{ r.days_remaining }}
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-muted mb-0">Sin vencimientos próximos.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

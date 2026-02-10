@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar' if vehicle else 'Nuevo' }} vehículo - Gestión de Flotas{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4">{{ 'Editar' if vehicle else 'Nuevo' }} vehículo</h1>
+<div class="card" style="max-width: 500px;">
+    <div class="card-body">
+        <form method="post">
+            {% if vehicle %}
+            <div class="mb-3">
+                <label class="form-label">Matrícula</label>
+                <input type="text" class="form-control" value="{{ vehicle.plate }}" disabled>
+            </div>
+            {% else %}
+            <div class="mb-3">
+                <label class="form-label">Matrícula <span class="text-danger">*</span></label>
+                <input type="text" name="plate" class="form-control" required
+                       value="{{ request.form.plate or '' }}" placeholder="1234ABC">
+            </div>
+            {% endif %}
+            <div class="mb-3">
+                <label class="form-label">Alias</label>
+                <input type="text" name="alias" class="form-control"
+                       value="{{ request.form.alias or (vehicle.alias if vehicle else '') }}" placeholder="Camión 1">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Marca</label>
+                <input type="text" name="brand" class="form-control"
+                       value="{{ request.form.brand or (vehicle.brand if vehicle else '') }}">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Modelo</label>
+                <input type="text" name="model" class="form-control"
+                       value="{{ request.form.model or (vehicle.model if vehicle else '') }}">
+            </div>
+            {% if vehicle %}
+            <div class="mb-3 form-check">
+                <input type="checkbox" name="active" value="1" class="form-check-input" id="active" {% if vehicle.active %}checked{% endif %}>
+                <label class="form-check-label" for="active">Activo</label>
+            </div>
+            {% endif %}
+            <button type="submit" class="btn btn-primary">Guardar</button>
+            <a href="{{ url_for('web.vehicle_list') }}" class="btn btn-secondary">Cancelar</a>
+        </form>
+    </div>
+</div>
+{% endblock %}

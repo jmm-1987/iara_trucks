@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Documento #{{ doc.id }} - Gestión de Flotas{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4">Documento #{{ doc.id }}</h1>
+<div class="row">
+    <div class="col-lg-6">
+        <div class="card mb-3">
+            <div class="card-header">Información</div>
+            <div class="card-body">
+                <table class="table table-sm">
+                    <tr><th>Vehículo</th><td>{{ doc.vehicle.plate if doc.vehicle else '-' }}</td></tr>
+                    <tr><th>Tipo</th><td>{{ doc_type_labels.get(doc.doc_type, doc.doc_type or '-') }}</td></tr>
+                    <tr><th>Estado</th><td>
+                        {% if doc.status == 'processed' %}<span class="badge bg-success">Procesado</span>
+                        {% elif doc.status == 'pending' %}<span class="badge bg-warning">Pendiente</span>
+                        {% else %}<span class="badge bg-danger">Error</span>{% endif %}
+                    </td></tr>
+                    <tr><th>Proveedor</th><td>{{ doc.vendor or '-' }}</td></tr>
+                    <tr><th>Fecha emisión</th><td>{{ doc.issue_date or '-' }}</td></tr>
+                    <tr><th>Vencimiento</th><td>{{ doc.due_date or '-' }}</td></tr>
+                    <tr><th>Importe total</th><td>{% if doc.total_amount %}{{ "%.2f"|format(doc.total_amount) }} {{ doc.currency or 'EUR' }}{% else %}-{% endif %}</td></tr>
+                    <tr><th>Odómetro</th><td>{{ doc.odometer_km or '-' }}</td></tr>
+                    <tr><th>Subido</th><td>{{ doc.uploaded_at.strftime('%d/%m/%Y %H:%M') if doc.uploaded_at else '-' }}</td></tr>
+                    {% if doc.error_message %}
+                    <tr><th>Error</th><td class="text-danger">{{ doc.error_message }}</td></tr>
+                    {% endif %}
+                </table>
+                <form method="post" action="{{ url_for('web.document_reprocess', did=doc.id) }}" class="d-inline">
+                    <button type="submit" class="btn btn-outline-warning" onclick="return confirm('¿Reprocesar documento?')">
+                        <i class="bi bi-arrow-clockwise me-1"></i> Reprocesar
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card mb-3">
+            <div class="card-header">Imagen</div>
+            <div class="card-body text-center">
+                {% set fname = doc.file_path.replace('\\','/').split('/')[-1] if doc.file_path else '' %}
+                {% set ext = fname.split('.')[-1]|lower if fname else '' %}
+                {% if ext in ['jpg','jpeg','png'] %}
+                <img src="{{ url_for('web.serve_upload', filename=fname) }}" class="img-fluid" style="max-height: 300px;" alt="Documento"
+                     onerror="this.parentElement.innerHTML='<p class=text-muted>Imagen no accesible</p>';">
+                {% else %}
+                <p class="text-muted">Archivo: {{ doc.file_path }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+<div class="card">
+    <div class="card-header">JSON extraído</div>
+    <div class="card-body">
+        {% if doc.extracted_json %}
+        <pre class="bg-light p-3 rounded" style="max-height: 400px; overflow: auto;"><code>{{ doc.extracted_json }}</code></pre>
+        {% else %}
+        <p class="text-muted mb-0">Sin datos extraídos.</p>
+        {% endif %}
+    </div>
+</div>
+<a href="{{ url_for('web.document_list') }}" class="btn btn-secondary mt-2">← Volver a documentos</a>
+{% endblock %}

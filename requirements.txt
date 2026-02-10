@@ -1,0 +1,32 @@
+# Gestión de Flotas - Dependencias
+# Python 3.11+
+
+# Web framework
+Flask>=3.0.0
+Werkzeug>=3.0.0
+
+# Database
+SQLAlchemy>=2.0.0
+Flask-SQLAlchemy>=3.1.0
+
+# Migrations (opcional - usamos init_db si no hay Alembic)
+alembic>=1.13.0
+
+# Forms
+Flask-WTF>=1.2.0
+WTForms>=3.1.0
+
+# Env vars
+python-dotenv>=1.0.0
+
+# HTTP & APIs
+requests>=2.31.0
+openai>=1.12.0
+
+# Scheduler
+APScheduler>=3.10.0
+
+# Testing
+pytest>=8.0.0
+pytest-cov>=4.1.0
+pytest-flask>=1.3.0
