@@ -75,6 +75,7 @@ def clear_pending_state(user_id: int) -> None:
     session = get_or_create_session(user_id)
     session.pending_action = None
     session.pending_vehicle_id = None
+    session.pending_document_id = None
     session.pending_file_id = None
     session.pending_file_path = None
     db.session.commit()
@@ -245,23 +246,43 @@ def handle_text_message(chat_id: int, user_id: int, text: str, token: str) -> No
                 send_message(token, chat_id, "❌ Por favor escribe solo el número de kilómetros (ej: 125000) o 'skip' para omitir.")
                 return
         
-        # Actualizar el FuelEntry con los kilómetros
-        if session.pending_vehicle_id:
-            # Buscar el último FuelEntry del vehículo sin kilómetros
-            fuel_entry = FuelEntry.query.filter_by(
-                vehicle_id=session.pending_vehicle_id,
-                kilometers=None
-            ).order_by(FuelEntry.id.desc()).first()
+        # Actualizar el FuelEntry con los kilómetros usando el document_id guardado
+        if session.pending_document_id:
+            # Buscar el FuelEntry asociado al documento
+            fuel_entry = FuelEntry.query.filter_by(document_id=session.pending_document_id).first()
             
             if fuel_entry:
                 fuel_entry.kilometers = kilometers
+                # También actualizar el odómetro en el documento
+                doc = Document.query.get(session.pending_document_id)
+                if doc:
+                    doc.odometer_km = kilometers
                 db.session.commit()
                 if kilometers:
                     send_message(token, chat_id, f"✅ Kilómetros guardados: {kilometers} km")
                 else:
                     send_message(token, chat_id, "✅ Ticket guardado sin kilómetros.")
             else:
-                send_message(token, chat_id, "✅ Ticket procesado correctamente.")
+                # Si no hay FuelEntry, intentar buscar por vehículo
+                if session.pending_vehicle_id:
+                    fuel_entry = FuelEntry.query.filter_by(
+                        vehicle_id=session.pending_vehicle_id,
+                        kilometers=None
+                    ).order_by(FuelEntry.id.desc()).first()
+                    
+                    if fuel_entry:
+                        fuel_entry.kilometers = kilometers
+                        db.session.commit()
+                        if kilometers:
+                            send_message(token, chat_id, f"✅ Kilómetros guardados: {kilometers} km")
+                        else:
+                            send_message(token, chat_id, "✅ Ticket guardado sin kilómetros.")
+                    else:
+                        send_message(token, chat_id, "✅ Ticket procesado correctamente.")
+                else:
+                    send_message(token, chat_id, "✅ Ticket procesado correctamente.")
+        else:
+            send_message(token, chat_id, "✅ Ticket procesado correctamente.")
         
         clear_pending_state(user_id)
         handle_start(chat_id, token)
@@ -395,7 +416,8 @@ def process_incoming_document(
         
         # Si es un ticket de gasoil, preguntar por kilómetros
         if session.pending_action == "upload_ticket" and doc.doc_type == "fuel_ticket":
-            # Guardar file_id para poder actualizar después
+            # Guardar document_id para poder actualizar después
+            session.pending_document_id = doc.id
             session.pending_file_id = file_id
             session.pending_file_path = file_path_telegram
             db.session.commit()

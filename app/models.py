@@ -200,6 +200,7 @@ class TelegramSession(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     pending_action = db.Column(db.String(50), nullable=True)  # 'upload_ticket', 'upload_document', 'waiting_plate', 'waiting_km'
     pending_vehicle_id = db.Column(db.Integer, ForeignKey("vehicle.id"), nullable=True)
+    pending_document_id = db.Column(db.Integer, ForeignKey("document.id"), nullable=True)
     pending_file_id = db.Column(db.String(255), nullable=True)
     pending_file_path = db.Column(db.String(255), nullable=True)
 

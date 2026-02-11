@@ -70,8 +70,24 @@
                                     <p class="text-muted small mb-2">{{ vehicle.brand or '' }} {{ vehicle.model or '' }}</p>
                                     {% endif %}
                                     <div class="small">
-                                        <div class="text-muted">Combustible mes: <strong>{{ "%.1f"|format(vehicle_kpis.fuel_liters_month) }} L</strong></div>
-                                        <div class="text-muted">Gastos mes: <strong>{{ "%.2f"|format(vehicle_kpis.expenses_amount_month) }} €</strong></div>
+                                        {% set fuel_liters = vehicle_kpis.fuel_liters_month or 0 %}
+                                        {% set fuel_subtotal = vehicle_kpis.fuel_subtotal_month or 0 %}
+                                        {% set expenses = vehicle_kpis.expenses_amount_month or 0 %}
+                                        {% set total_expenses = fuel_subtotal + expenses %}
+                                        {% set is_current_month = vehicle_kpis.is_current_month_data if vehicle_kpis.is_current_month_data is defined else True %}
+                                        <div class="text-muted">
+                                            Combustible {% if not is_current_month %}<span class="text-muted" style="font-size: 0.85em;">(últimos 90 días)</span>{% else %}mes{% endif %}: 
+                                            <strong>{{ "%.1f"|format(fuel_liters) }} L</strong>
+                                        </div>
+                                        {% if fuel_subtotal > 0 %}
+                                        <div class="text-muted">Gasto gasoil (sin IVA): <strong>{{ "%.2f"|format(fuel_subtotal) }} €</strong></div>
+                                        {% endif %}
+                                        {% if expenses > 0 %}
+                                        <div class="text-muted">Otros gastos: <strong>{{ "%.2f"|format(expenses) }} €</strong></div>
+                                        {% endif %}
+                                        {% if total_expenses > 0 %}
+                                        <div class="text-muted mt-1"><strong>Total gastos: {{ "%.2f"|format(total_expenses) }} €</strong></div>
+                                        {% endif %}
                                         {% if vehicle_kpis.count_reminders_30 > 0 %}
                                         <div class="text-warning mt-1">
                                             <i class="bi bi-exclamation-triangle"></i> {{ vehicle_kpis.count_reminders_30 }} vencimiento(s)

@@ -81,6 +81,34 @@ def process_document(document_id: int) -> tuple[bool, str]:
         return False, str(e)
 
     extracted = validate_and_enrich(extracted, vehicle_plate)
+    
+    # Intentar asociar vehículo automáticamente si OpenAI extrajo una matrícula
+    # SIEMPRE usar la matrícula extraída por OpenAI si está disponible, ya que es más confiable
+    if extracted.get("vehicle_identifier_guess"):
+        from app.services.extraction_service import normalize_plate
+        from app.models import Vehicle
+        
+        extracted_plate = normalize_plate(extracted.get("vehicle_identifier_guess"))
+        if extracted_plate:
+            # Buscar o crear el vehículo con la matrícula extraída
+            vehicle = Vehicle.query.filter_by(plate=extracted_plate).first()
+            if not vehicle:
+                # Crear vehículo automáticamente si no existe
+                vehicle = Vehicle(plate=extracted_plate, active=True)
+                db.session.add(vehicle)
+                db.session.flush()  # Para obtener el ID
+                logger.info("Vehículo creado automáticamente: %s", extracted_plate)
+            
+            # Si el documento ya tenía un vehículo asociado diferente, actualizarlo
+            if doc.vehicle_id and doc.vehicle_id != vehicle.id:
+                current_vehicle = Vehicle.query.get(doc.vehicle_id)
+                if current_vehicle:
+                    logger.warning("Documento %s tenía vehículo %s pero el documento muestra %s. Actualizando al vehículo correcto.", 
+                                 document_id, current_vehicle.plate, extracted_plate)
+            
+            # Asociar el documento con el vehículo correcto (siempre usar la matrícula extraída)
+            doc.vehicle_id = vehicle.id
+            logger.info("Documento %s asociado automáticamente al vehículo %s (matrícula extraída del documento)", document_id, extracted_plate)
 
     # Persistir en Document
     amounts = extracted.get("amounts") or {}
@@ -200,11 +228,18 @@ def process_document(document_id: int) -> tuple[bool, str]:
             return [decimal_to_float(item) for item in obj]
         return obj
     
+    # IMPORTANTE: Guardar cambios del documento ANTES de crear FuelEntry/ExpenseEntry
+    # para asegurar que vehicle_id esté actualizado
+    db.session.flush()
+    
     extracted_for_json = decimal_to_float(extracted)
     doc.extracted_json = json.dumps(extracted_for_json, indent=2, default=str)
     doc.processed_at = datetime.utcnow()
     doc.status = DocumentStatus.PROCESSED.value
     doc.error_message = None
+    
+    # Guardar cambios del documento para que vehicle_id esté disponible
+    db.session.flush()
 
     # Crear FuelEntry si es fuel_ticket
     if doc.doc_type == DocumentType.FUEL_TICKET.value and doc.vehicle_id:
@@ -240,20 +275,26 @@ def process_document(document_id: int) -> tuple[bool, str]:
             elif doc.odometer_km:
                 kilometers = doc.odometer_km
             
-            fuel_entry = FuelEntry(
-                document_id=doc.id,
-                vehicle_id=doc.vehicle_id,
-                date=doc.issue_date or datetime.utcnow().date(),
-                liters=liters_decimal,
-                price_per_liter=price_decimal,
-                subtotal_amount=subtotal,
-                tax_amount=tax,
-                total_amount=total_decimal,
-                station=doc.vendor,
-                fuel_type=fuel.get("fuel_type"),
-                kilometers=kilometers,
-            )
-            db.session.add(fuel_entry)
+            # Asegurar que doc.vehicle_id esté disponible y no sea None
+            if not doc.vehicle_id:
+                logger.error("No se puede crear FuelEntry: documento %s no tiene vehicle_id después de procesar", doc.id)
+            else:
+                fuel_entry = FuelEntry(
+                    document_id=doc.id,
+                    vehicle_id=doc.vehicle_id,
+                    date=doc.issue_date or datetime.utcnow().date(),
+                    liters=liters_decimal,
+                    price_per_liter=price_decimal,
+                    subtotal_amount=subtotal,
+                    tax_amount=tax,
+                    total_amount=total_decimal,
+                    station=doc.vendor,
+                    fuel_type=fuel.get("fuel_type"),
+                    kilometers=kilometers,
+                )
+                db.session.add(fuel_entry)
+                logger.info("FuelEntry creado para documento %s, vehículo ID %s", doc.id, doc.vehicle_id)
+                logger.info("FuelEntry creado para documento %s, vehículo ID %s", doc.id, doc.vehicle_id)
 
     # Crear ExpenseEntry si es gasto
     category = DOC_TYPE_TO_EXPENSE_CATEGORY.get(doc.doc_type)

@@ -58,6 +58,9 @@ def allowed_file(filename: str, allowed: set) -> bool:
 @web_bp.route("/")
 def index():
     """Dashboard principal."""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     vehicle_id = request.args.get("vehicle_id", type=int)
     kpis = dashboard_kpis(vehicle_id)
     reminders = upcoming_due_dates(30)
@@ -66,9 +69,15 @@ def index():
     
     # Obtener vehículos con sus KPIs
     vehicles = Vehicle.query.filter(Vehicle.active == True).all()
+    logger.debug("Dashboard: %d vehículos activos encontrados", len(vehicles))
+    
     vehicles_with_kpis = []
     for vehicle in vehicles:
         vehicle_kpis = dashboard_kpis(vehicle.id)
+        logger.debug("Vehículo %s (%s): combustible=%.1f L, gastos=%.2f €", 
+                     vehicle.plate, vehicle.id, 
+                     vehicle_kpis.get("fuel_liters_month", 0),
+                     vehicle_kpis.get("expenses_amount_month", 0))
         vehicles_with_kpis.append({
             "vehicle": vehicle,
             "kpis": vehicle_kpis
