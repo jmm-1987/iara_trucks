@@ -44,8 +44,23 @@ def run_telegram_polling(app):
 
 if __name__ == "__main__":
     from app import create_app
+    from app.models import (
+        db,
+        Document,
+        ExpenseEntry,
+        FuelEntry,
+        Reminder,
+        TelegramSession,
+        User,
+        Vehicle,
+    )  # Importar modelos para que SQLAlchemy los registre
 
     app = create_app()
+
+    # Inicializar base de datos si no existe
+    with app.app_context():
+        db.create_all()
+        print("✅ Base de datos inicializada")
 
     # Bot Telegram en segundo plano
     t = threading.Thread(target=run_telegram_polling, args=(app,), daemon=True)

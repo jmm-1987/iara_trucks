@@ -14,10 +14,21 @@ logger = logging.getLogger(__name__)
 # Prompt que fuerza salida JSON estricta
 EXTRACTION_PROMPT = """Analiza esta imagen de un documento (en español) y extrae los datos relevantes.
 
+IMPORTANTE: Identifica primero el TIPO de documento antes de extraer datos:
+- fuel_ticket: Ticket de combustible/gasolina/gasoil (Repsol, Cepsa, BP, etc.) - busca litros, precio por litro, estación
+- invoice: Factura comercial (tiene número de factura, IVA desglosado, datos fiscales completos)
+- delivery_note: Albarán de entrega (no tiene IVA o es simplificado, suele ser entrega de mercancía)
+- insurance_policy: Póliza de seguro (tiene fechas de vigencia, compañía aseguradora)
+- itv: Revisión ITV (inspección técnica de vehículos)
+- tachograph: Tacógrafo (documento de control de tiempos de conducción)
+- workshop_invoice: Factura de taller mecánico (reparaciones, mantenimiento)
+- tires_invoice: Factura de neumáticos
+- other: Cualquier otro documento
+
 Devuelve ÚNICAMENTE un objeto JSON válido, sin texto adicional, con esta estructura exacta:
 
 {
-  "doc_type": "fuel_ticket" | "insurance_policy" | "itv" | "tachograph" | "workshop_invoice" | "tires_invoice" | "other",
+  "doc_type": "fuel_ticket" | "invoice" | "delivery_note" | "insurance_policy" | "itv" | "tachograph" | "workshop_invoice" | "tires_invoice" | "other",
   "vehicle_identifier_guess": "matrícula si aparece o null",
   "vendor_name": "nombre proveedor o null",
   "vendor_tax_id": "CIF/NIF o null",
@@ -39,8 +50,17 @@ Devuelve ÚNICAMENTE un objeto JSON válido, sin texto adicional, con esta estru
   "confidence": número entre 0 y 1
 }
 
-Reglas:
-- doc_type: fuel_ticket=ticket combustible, insurance_policy=póliza seguro, itv=revisión ITV, tachograph=tacógrafo, workshop_invoice=factura taller, tires_invoice=factura neumáticos
+Reglas de detección de tipo:
+- fuel_ticket: Si tiene estación de servicio, litros, precio por litro, tipo de combustible
+- invoice: Si tiene número de factura, IVA desglosado, datos fiscales completos (CIF, razón social)
+- delivery_note: Si dice "albarán", "entrega", "delivery note", o es documento de entrega sin factura completa
+- insurance_policy: Si menciona seguro, póliza, aseguradora, fechas de vigencia
+- itv: Si menciona ITV, inspección técnica, ITV
+- tachograph: Si menciona tacógrafo, tiempos de conducción
+- workshop_invoice: Si es factura de taller, reparación, mantenimiento vehículo
+- tires_invoice: Si es factura específica de neumáticos
+
+Reglas generales:
 - Usa null para campos no encontrados
 - Fechas en formato YYYY-MM-DD
 - Importes con punto decimal (ej: 45.99)

@@ -16,20 +16,31 @@
                         {% else %}<span class="badge bg-danger">Error</span>{% endif %}
                     </td></tr>
                     <tr><th>Proveedor</th><td>{{ doc.vendor or '-' }}</td></tr>
-                    <tr><th>Fecha emisión</th><td>{{ doc.issue_date or '-' }}</td></tr>
-                    <tr><th>Vencimiento</th><td>{{ doc.due_date or '-' }}</td></tr>
+                    <tr><th>Fecha emisión</th><td>{{ doc.issue_date|date_format }}</td></tr>
+                    <tr><th>Vencimiento</th><td>{{ doc.due_date|date_format }}</td></tr>
+                    <tr><th>Base imponible</th><td>{% if doc.subtotal_amount %}{{ "%.2f"|format(doc.subtotal_amount) }} {{ doc.currency or 'EUR' }}{% else %}-{% endif %}</td></tr>
+                    <tr><th>IVA</th><td>{% if doc.tax_amount %}{{ "%.2f"|format(doc.tax_amount) }} {{ doc.currency or 'EUR' }}{% else %}-{% endif %}</td></tr>
                     <tr><th>Importe total</th><td>{% if doc.total_amount %}{{ "%.2f"|format(doc.total_amount) }} {{ doc.currency or 'EUR' }}{% else %}-{% endif %}</td></tr>
                     <tr><th>Odómetro</th><td>{{ doc.odometer_km or '-' }}</td></tr>
-                    <tr><th>Subido</th><td>{{ doc.uploaded_at.strftime('%d/%m/%Y %H:%M') if doc.uploaded_at else '-' }}</td></tr>
+                    <tr><th>Subido</th><td>{{ doc.uploaded_at|date_format }}</td></tr>
                     {% if doc.error_message %}
                     <tr><th>Error</th><td class="text-danger">{{ doc.error_message }}</td></tr>
                     {% endif %}
                 </table>
-                <form method="post" action="{{ url_for('web.document_reprocess', did=doc.id) }}" class="d-inline">
-                    <button type="submit" class="btn btn-outline-warning" onclick="return confirm('¿Reprocesar documento?')">
-                        <i class="bi bi-arrow-clockwise me-1"></i> Reprocesar
-                    </button>
-                </form>
+                <div class="d-flex gap-2">
+                    <form method="post" action="{{ url_for('web.document_reprocess', did=doc.id) }}" class="d-inline">
+                        <button type="submit" class="btn btn-outline-warning" onclick="return confirm('¿Reprocesar documento?')">
+                            <i class="bi bi-arrow-clockwise me-1"></i> Reprocesar
+                        </button>
+                    </form>
+                    {% if doc.due_date and doc.vehicle_id and doc.doc_type in ['insurance_policy', 'itv', 'tachograph'] %}
+                    <form method="post" action="{{ url_for('web.document_create_reminder', did=doc.id) }}" class="d-inline">
+                        <button type="submit" class="btn btn-outline-info" onclick="return confirm('¿Crear recordatorio de vencimiento?')">
+                            <i class="bi bi-bell me-1"></i> Crear recordatorio
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
             </div>
         </div>
     </div>
@@ -40,8 +51,15 @@
                 {% set fname = doc.file_path.replace('\\','/').split('/')[-1] if doc.file_path else '' %}
                 {% set ext = fname.split('.')[-1]|lower if fname else '' %}
                 {% if ext in ['jpg','jpeg','png'] %}
-                <img src="{{ url_for('web.serve_upload', filename=fname) }}" class="img-fluid" style="max-height: 300px;" alt="Documento"
+                <img src="{{ url_for('web.serve_upload', filename=fname) }}" 
+                     class="img-fluid document-thumbnail" 
+                     style="max-height: 400px; cursor: zoom-in;" 
+                     alt="Documento"
+                     data-bs-toggle="modal" 
+                     data-bs-target="#imageModal"
+                     onclick="openImageModal('{{ url_for('web.serve_upload', filename=fname) }}')"
                      onerror="this.parentElement.innerHTML='<p class=text-muted>Imagen no accesible</p>';">
+                <p class="text-muted mt-2 small">Haz clic en la imagen para ampliar</p>
                 {% else %}
                 <p class="text-muted">Archivo: {{ doc.file_path }}</p>
                 {% endif %}
@@ -60,4 +78,82 @@
     </div>
 </div>
 <a href="{{ url_for('web.document_list') }}" class="btn btn-secondary mt-2">← Volver a documentos</a>
+
+<!-- Modal para ampliar imagen -->
+<div class="modal fade" id="imageModal" tabindex="-1" aria-labelledby="imageModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content bg-dark">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title text-white" id="imageModalLabel">Documento #{{ doc.id }}</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+            </div>
+            <div class="modal-body p-0 d-flex align-items-center justify-content-center" style="overflow: auto;">
+                <div class="position-relative" style="min-width: 100%; min-height: 100%;">
+                    <img id="modalImage" src="" class="img-fluid" alt="Documento ampliado" style="max-width: 100%; height: auto;">
+                </div>
+            </div>
+            <div class="modal-footer border-secondary">
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-outline-light" onclick="zoomImage(0.5)">
+                        <i class="bi bi-zoom-out"></i> Reducir
+                    </button>
+                    <button type="button" class="btn btn-outline-light" onclick="zoomImage(1)">
+                        <i class="bi bi-arrows-angle-contract"></i> Normal
+                    </button>
+                    <button type="button" class="btn btn-outline-light" onclick="zoomImage(2)">
+                        <i class="bi bi-zoom-in"></i> Ampliar
+                    </button>
+                    <button type="button" class="btn btn-outline-light" onclick="zoomImage(3)">
+                        <i class="bi bi-zoom-in"></i> Máximo
+                    </button>
+                </div>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentZoom = 1;
+const modalImage = document.getElementById('modalImage');
+
+function openImageModal(imageUrl) {
+    modalImage.src = imageUrl;
+    currentZoom = 1;
+    modalImage.style.transform = 'scale(1)';
+    modalImage.style.transformOrigin = 'center center';
+}
+
+function zoomImage(factor) {
+    if (factor === 1) {
+        currentZoom = 1;
+    } else if (factor === 0.5) {
+        currentZoom = Math.max(0.5, currentZoom - 0.5);
+    } else if (factor === 2) {
+        currentZoom = Math.min(5, currentZoom + 0.5);
+    } else if (factor === 3) {
+        currentZoom = 5;
+    }
+    modalImage.style.transform = `scale(${currentZoom})`;
+    modalImage.style.transformOrigin = 'center center';
+    modalImage.style.transition = 'transform 0.3s ease';
+}
+
+// Permitir zoom con la rueda del ratón
+document.getElementById('imageModal')?.addEventListener('wheel', function(e) {
+    if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.2 : 0.2;
+        currentZoom = Math.max(0.5, Math.min(5, currentZoom + delta));
+        modalImage.style.transform = `scale(${currentZoom})`;
+        modalImage.style.transformOrigin = 'center center';
+    }
+}, { passive: false });
+
+// Reset zoom al cerrar el modal
+document.getElementById('imageModal')?.addEventListener('hidden.bs.modal', function() {
+    currentZoom = 1;
+    modalImage.style.transform = 'scale(1)';
+});
+</script>
 {% endblock %}

@@ -45,14 +45,16 @@
             <div class="card-body">
                 {% if fuel_data %}
                 <table class="table table-sm">
-                    <thead><tr><th>Vehículo</th><th>Mes</th><th>Litros</th><th>Importe</th></tr></thead>
+                    <thead><tr><th>Vehículo</th><th>Mes</th><th>Litros</th><th>Base imponible</th><th>IVA</th><th>Total</th></tr></thead>
                     <tbody>
                         {% for r in fuel_data %}
                         <tr>
                             <td>{{ r.vehicle_plate }}</td>
                             <td>{{ r.month }}</td>
-                            <td>{{ "%.1f"|format(r.total_liters) }}</td>
-                            <td>{{ "%.2f"|format(r.total_amount) }} €</td>
+                            <td>{{ "%.1f"|format(r.total_liters or 0) }}</td>
+                            <td>{% if r.subtotal_amount %}{{ "%.2f"|format(r.subtotal_amount) }} €{% else %}-{% endif %}</td>
+                            <td>{% if r.tax_amount %}{{ "%.2f"|format(r.tax_amount) }} €{% else %}-{% endif %}</td>
+                            <td>{{ "%.2f"|format(r.total_amount or 0) }} €</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -69,13 +71,15 @@
             <div class="card-body">
                 {% if expense_data %}
                 <table class="table table-sm">
-                    <thead><tr><th>Vehículo</th><th>Categoría</th><th>Total</th></tr></thead>
+                    <thead><tr><th>Vehículo</th><th>Categoría</th><th>Base imponible</th><th>IVA</th><th>Total</th></tr></thead>
                     <tbody>
                         {% for r in expense_data %}
                         <tr>
                             <td>{{ r.vehicle_plate }}</td>
                             <td>{{ r.category }}</td>
-                            <td>{{ "%.2f"|format(r.total_amount) }} €</td>
+                            <td>{% if r.subtotal_amount %}{{ "%.2f"|format(r.subtotal_amount) }} €{% else %}-{% endif %}</td>
+                            <td>{% if r.tax_amount %}{{ "%.2f"|format(r.tax_amount) }} €{% else %}-{% endif %}</td>
+                            <td>{{ "%.2f"|format(r.total_amount or 0) }} €</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -89,7 +93,7 @@
 </div>
 
 <div class="card">
-    <div class="card-header">Próximos vencimientos (90 días)</div>
+    <div class="card-header">Vencimientos</div>
     <div class="card-body">
         {% if reminders_data %}
         <table class="table table-sm">
@@ -99,11 +103,17 @@
                 <tr>
                     <td>{{ r.vehicle_plate }}</td>
                     <td>{{ r.kind }}</td>
-                    <td>{{ r.due_date }}</td>
+                    <td>{{ r.due_date|date_format }}</td>
                     <td>
-                        <span class="badge {% if r.days_remaining <= 7 %}bg-danger{% elif r.days_remaining <= 30 %}bg-warning{% else %}bg-secondary{% endif %}">
-                            {{ r.days_remaining }}
-                        </span>
+                        {% if r.days_remaining < 0 %}
+                        <span class="badge bg-danger">Vencido ({{ -r.days_remaining }})</span>
+                        {% elif r.days_remaining <= 7 %}
+                        <span class="badge bg-danger">{{ r.days_remaining }}</span>
+                        {% elif r.days_remaining <= 30 %}
+                        <span class="badge bg-warning">{{ r.days_remaining }}</span>
+                        {% else %}
+                        <span class="badge bg-secondary">{{ r.days_remaining }}</span>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}

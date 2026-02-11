@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Vencimientos - Gestión de Flotas{% endblock %}
 {% block content %}
-<h1 class="h3 mb-4">Próximos vencimientos</h1>
+<h1 class="h3 mb-4">Vencimientos</h1>
 
 <form method="get" class="mb-3">
     <select name="vehicle_id" class="form-select form-select-sm d-inline-block w-auto">
@@ -30,18 +30,24 @@
                 <tr>
                     <td>{{ r.vehicle_plate }}</td>
                     <td>{{ r.kind }}</td>
-                    <td>{{ r.due_date }}</td>
+                    <td>{{ r.due_date|date_format }}</td>
                     <td>
-                        <span class="badge {% if r.days_remaining <= 7 %}bg-danger{% elif r.days_remaining <= 30 %}bg-warning{% else %}bg-secondary{% endif %}">
-                            {{ r.days_remaining }} días
-                        </span>
+                        {% if r.days_remaining < 0 %}
+                        <span class="badge bg-danger">Vencido ({{ -r.days_remaining }} días)</span>
+                        {% elif r.days_remaining <= 7 %}
+                        <span class="badge bg-danger">{{ r.days_remaining }} días</span>
+                        {% elif r.days_remaining <= 30 %}
+                        <span class="badge bg-warning">{{ r.days_remaining }} días</span>
+                        {% else %}
+                        <span class="badge bg-secondary">{{ r.days_remaining }} días</span>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
         {% else %}
-        <p class="text-muted mb-0">No hay vencimientos en los próximos 90 días.</p>
+        <p class="text-muted mb-0">No hay vencimientos registrados.</p>
         {% endif %}
     </div>
 </div>

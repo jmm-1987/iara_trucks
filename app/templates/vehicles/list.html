@@ -16,6 +16,7 @@
                     <th>Alias</th>
                     <th>Marca</th>
                     <th>Modelo</th>
+                    <th>Categoría</th>
                     <th>Estado</th>
                     <th></th>
                 </tr>
@@ -23,10 +24,15 @@
             <tbody>
                 {% for v in pagination.items %}
                 <tr>
-                    <td><strong>{{ v.plate }}</strong></td>
+                    <td><a href="{{ url_for('web.vehicle_detail', vid=v.id) }}" class="text-decoration-none"><strong>{{ v.plate }}</strong></a></td>
                     <td>{{ v.alias or '-' }}</td>
                     <td>{{ v.brand or '-' }}</td>
                     <td>{{ v.model or '-' }}</td>
+                    <td>
+                        {% if v.category %}
+                        <span class="badge bg-info">{{ v.category|title }}</span>
+                        {% endif %}
+                    </td>
                     <td>
                         {% if v.active %}
                         <span class="badge bg-success">Activo</span>
@@ -35,6 +41,7 @@
                         {% endif %}
                     </td>
                     <td>
+                        <a href="{{ url_for('web.vehicle_detail', vid=v.id) }}" class="btn btn-sm btn-outline-primary">Ver</a>
                         <a href="{{ url_for('web.vehicle_edit', vid=v.id) }}" class="btn btn-sm btn-outline-secondary">Editar</a>
                         {% if v.active %}
                         <form method="post" action="{{ url_for('web.vehicle_delete', vid=v.id) }}" class="d-inline">

@@ -3,7 +3,7 @@ Servicio de procesamiento de documentos - Orquesta OpenAI, extracción y persist
 """
 import json
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
@@ -16,13 +16,15 @@ from app.models import (
     FuelEntry,
     db,
 )
-from app.services.extraction_service import validate_and_enrich
+from app.services.extraction_service import normalize_date, validate_and_enrich
 from app.services.openai_service import analyze_document_image
 from app.services.reminders_service import update_reminders_from_extraction
 
 logger = logging.getLogger(__name__)
 
 DOC_TYPE_TO_EXPENSE_CATEGORY = {
+    "invoice": ExpenseCategory.OTHER.value,  # Factura genérica va a OTHER
+    "delivery_note": ExpenseCategory.OTHER.value,  # Albarán va a OTHER
     "insurance_policy": ExpenseCategory.INSURANCE.value,
     "itv": ExpenseCategory.ITV.value,
     "tachograph": ExpenseCategory.ITV.value,  # Tacógrafo va a ITV
@@ -85,12 +87,121 @@ def process_document(document_id: int) -> tuple[bool, str]:
     fuel = extracted.get("fuel") or {}
     doc.doc_type = extracted.get("doc_type", "other")
     doc.vendor = extracted.get("vendor_name") or extracted.get("vendor")
-    doc.issue_date = extracted.get("date_issue")
-    doc.due_date = extracted.get("date_due")
-    doc.total_amount = amounts.get("total")
+    
+    # Convertir fechas de string a objetos date
+    date_issue_str = extracted.get("date_issue")
+    if date_issue_str:
+        normalized_date = normalize_date(date_issue_str)
+        if normalized_date:
+            try:
+                doc.issue_date = datetime.strptime(normalized_date, "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                logger.warning("Fecha de emisión inválida: %s", date_issue_str)
+                doc.issue_date = None
+        else:
+            doc.issue_date = None
+    else:
+        doc.issue_date = None
+    
+    date_due_str = extracted.get("date_due")
+    if date_due_str:
+        normalized_date = normalize_date(date_due_str)
+        if normalized_date:
+            try:
+                doc.due_date = datetime.strptime(normalized_date, "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                logger.warning("Fecha de vencimiento inválida: %s", date_due_str)
+                doc.due_date = None
+        else:
+            doc.due_date = None
+    else:
+        doc.due_date = None
+    
+    # Convertir Decimal a float para JSON y guardar como Decimal en BD
+    # Manejo diferente según el tipo de documento
+    
+    # Subtotal (base imponible)
+    subtotal_amount = amounts.get("subtotal")
+    if subtotal_amount is not None:
+        if isinstance(subtotal_amount, Decimal):
+            doc.subtotal_amount = subtotal_amount
+        else:
+            try:
+                doc.subtotal_amount = Decimal(str(subtotal_amount))
+            except (ValueError, TypeError):
+                doc.subtotal_amount = None
+    else:
+        doc.subtotal_amount = None
+    
+    # IVA
+    tax_amount = amounts.get("tax")
+    if tax_amount is not None:
+        if isinstance(tax_amount, Decimal):
+            doc.tax_amount = tax_amount
+        else:
+            try:
+                doc.tax_amount = Decimal(str(tax_amount))
+            except (ValueError, TypeError):
+                doc.tax_amount = None
+    else:
+        doc.tax_amount = None
+    
+    # Total (con IVA)
+    total_amount = amounts.get("total")
+    if total_amount is not None:
+        if isinstance(total_amount, Decimal):
+            doc.total_amount = total_amount
+        else:
+            try:
+                doc.total_amount = Decimal(str(total_amount))
+            except (ValueError, TypeError):
+                doc.total_amount = None
+    else:
+        # Si no hay total pero hay subtotal e IVA, calcular total
+        if doc.subtotal_amount is not None and doc.tax_amount is not None:
+            doc.total_amount = doc.subtotal_amount + doc.tax_amount
+        else:
+            doc.total_amount = None
+    
+    # Lógica especial según tipo de documento
+    # Para tickets de gasoil: calcular IVA si no está presente
+    # Para otros documentos (seguros, recibos bancarios, facturas sin IVA): no calcular IVA
+    if doc.doc_type == DocumentType.FUEL_TICKET.value:
+        # Para tickets de gasoil, si no hay IVA desglosado, calcularlo
+        if doc.total_amount and doc.tax_amount is None:
+            # Si hay total pero no hay IVA, calcular base e IVA
+            # IVA del 21% para combustible en España
+            if doc.subtotal_amount is None:
+                # Calcular base imponible desde el total (que incluye IVA)
+                doc.subtotal_amount = doc.total_amount / Decimal("1.21")
+                doc.tax_amount = doc.total_amount - doc.subtotal_amount
+            else:
+                # Si hay subtotal pero no IVA, calcular IVA
+                doc.tax_amount = doc.total_amount - doc.subtotal_amount
+    else:
+        # Para otros documentos (seguros, recibos bancarios, facturas sin IVA)
+        # Si no hay subtotal ni IVA pero hay total, el total es la base imponible
+        if doc.total_amount and doc.subtotal_amount is None and doc.tax_amount is None:
+            # El total es la base imponible (sin IVA)
+            doc.subtotal_amount = doc.total_amount
+            doc.tax_amount = Decimal("0")  # Sin IVA
+    
     doc.currency = (amounts.get("currency") or "EUR")
     doc.odometer_km = extracted.get("odometer_km")
-    doc.extracted_json = json.dumps(extracted, indent=2)
+    
+    # Convertir Decimal a float para serialización JSON
+    def decimal_to_float(obj):
+        """Convierte Decimal a float para JSON serialization."""
+        if isinstance(obj, Decimal):
+            return float(obj)
+        elif isinstance(obj, dict):
+            return {k: decimal_to_float(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [decimal_to_float(item) for item in obj]
+        return obj
+    
+    extracted_for_json = decimal_to_float(extracted)
+    doc.extracted_json = json.dumps(extracted_for_json, indent=2, default=str)
     doc.processed_at = datetime.utcnow()
     doc.status = DocumentStatus.PROCESSED.value
     doc.error_message = None
@@ -101,15 +212,46 @@ def process_document(document_id: int) -> tuple[bool, str]:
         price = fuel.get("price_per_liter")
         total = fuel.get("total_amount") or amounts.get("total")
         if liters and (total or (liters and price)):
+            # Asegurar que liters, price y total sean Decimal
+            liters_decimal = liters if isinstance(liters, Decimal) else Decimal(str(liters))
+            price_decimal = Decimal(str(price)) if price else Decimal("0")
+            total_decimal = total if isinstance(total, Decimal) else (Decimal(str(total)) if total else Decimal("0"))
+            
+            # Usar los valores ya calculados en doc (que ya tienen la lógica de IVA aplicada)
+            subtotal = doc.subtotal_amount
+            tax = doc.tax_amount
+            
+            # Si aún no se calcularon, calcularlos ahora (para tickets de gasoil siempre debe haber IVA)
+            if subtotal is None and total_decimal:
+                # Calcular base e IVA desde el total (IVA 21% para combustible)
+                subtotal = total_decimal / Decimal("1.21")
+                tax = total_decimal - subtotal
+            elif tax is None and subtotal and total_decimal:
+                # Si hay subtotal pero no IVA, calcular IVA
+                tax = total_decimal - subtotal
+            
+            # Intentar obtener kilómetros desde extracted o desde doc
+            kilometers = None
+            if fuel.get("odometer_km"):
+                try:
+                    kilometers = int(fuel.get("odometer_km"))
+                except (ValueError, TypeError):
+                    pass
+            elif doc.odometer_km:
+                kilometers = doc.odometer_km
+            
             fuel_entry = FuelEntry(
                 document_id=doc.id,
                 vehicle_id=doc.vehicle_id,
                 date=doc.issue_date or datetime.utcnow().date(),
-                liters=Decimal(str(liters)),
-                price_per_liter=Decimal(str(price)) if price else Decimal("0"),
-                total_amount=Decimal(str(total)) if total else Decimal("0"),
+                liters=liters_decimal,
+                price_per_liter=price_decimal,
+                subtotal_amount=subtotal,
+                tax_amount=tax,
+                total_amount=total_decimal,
                 station=doc.vendor,
                 fuel_type=fuel.get("fuel_type"),
+                kilometers=kilometers,
             )
             db.session.add(fuel_entry)
 
@@ -121,6 +263,8 @@ def process_document(document_id: int) -> tuple[bool, str]:
             vehicle_id=doc.vehicle_id,
             date=doc.issue_date or datetime.utcnow().date(),
             category=category,
+            subtotal_amount=doc.subtotal_amount,
+            tax_amount=doc.tax_amount,
             total_amount=doc.total_amount,
             vendor=doc.vendor,
         )
@@ -141,9 +285,27 @@ def build_summary_for_telegram(extracted: dict, doc_type_labels: dict) -> str:
     lines.append(f"📄 Tipo: {doc_type_labels.get(doc_type, doc_type)}")
 
     if extracted.get("date_issue"):
-        lines.append(f"📅 Fecha: {extracted['date_issue']}")
+        # Convertir fecha de YYYY-MM-DD a dd/mm/aaaa
+        date_issue = extracted['date_issue']
+        if isinstance(date_issue, str) and len(date_issue) == 10 and '-' in date_issue:
+            try:
+                from datetime import datetime
+                dt = datetime.strptime(date_issue, '%Y-%m-%d')
+                date_issue = dt.strftime('%d/%m/%Y')
+            except:
+                pass
+        lines.append(f"📅 Fecha: {date_issue}")
     if extracted.get("date_due"):
-        lines.append(f"⏰ Vencimiento: {extracted['date_due']}")
+        # Convertir fecha de YYYY-MM-DD a dd/mm/aaaa
+        date_due = extracted['date_due']
+        if isinstance(date_due, str) and len(date_due) == 10 and '-' in date_due:
+            try:
+                from datetime import datetime
+                dt = datetime.strptime(date_due, '%Y-%m-%d')
+                date_due = dt.strftime('%d/%m/%Y')
+            except:
+                pass
+        lines.append(f"⏰ Vencimiento: {date_due}")
     if extracted.get("vendor_name"):
         lines.append(f"🏢 Proveedor: {extracted['vendor_name']}")
 

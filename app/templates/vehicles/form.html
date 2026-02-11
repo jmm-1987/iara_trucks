@@ -32,6 +32,17 @@
                 <input type="text" name="model" class="form-control"
                        value="{{ request.form.model or (vehicle.model if vehicle else '') }}">
             </div>
+            <div class="mb-3">
+                <label class="form-label">Categoría</label>
+                <select name="category" class="form-select">
+                    <option value="">Seleccionar...</option>
+                    <option value="turismo" {% if (vehicle and vehicle.category == 'turismo') or request.form.category == 'turismo' %}selected{% endif %}>Turismo</option>
+                    <option value="furgoneta" {% if (vehicle and vehicle.category == 'furgoneta') or request.form.category == 'furgoneta' %}selected{% endif %}>Furgoneta</option>
+                    <option value="camion" {% if (vehicle and vehicle.category == 'camion') or request.form.category == 'camion' %}selected{% endif %}>Camión</option>
+                    <option value="tractora" {% if (vehicle and vehicle.category == 'tractora') or request.form.category == 'tractora' %}selected{% endif %}>Tractora</option>
+                    <option value="remolque" {% if (vehicle and vehicle.category == 'remolque') or request.form.category == 'remolque' %}selected{% endif %}>Remolque</option>
+                </select>
+            </div>
             {% if vehicle %}
             <div class="mb-3 form-check">
                 <input type="checkbox" name="active" value="1" class="form-check-input" id="active" {% if vehicle.active %}checked{% endif %}>

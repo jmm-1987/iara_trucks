@@ -15,6 +15,8 @@ class DocumentType(PyEnum):
     """Tipos de documento soportados."""
 
     FUEL_TICKET = "fuel_ticket"
+    INVOICE = "invoice"
+    DELIVERY_NOTE = "delivery_note"
     INSURANCE_POLICY = "insurance_policy"
     ITV = "itv"
     TACHOGRAPH = "tachograph"
@@ -49,6 +51,16 @@ class ReminderKind(PyEnum):
     TACHOGRAPH = "tachograph"
 
 
+class VehicleCategory(PyEnum):
+    """Categorías de vehículos."""
+
+    TURISMO = "turismo"
+    FURGONETA = "furgoneta"
+    CAMION = "camion"
+    TRACTORA = "tractora"
+    REMOLQUE = "remolque"
+
+
 class User(db.Model):
     """Usuario de Telegram."""
 
@@ -73,6 +85,7 @@ class Vehicle(db.Model):
     alias = db.Column(db.String(100))
     brand = db.Column(db.String(100))
     model = db.Column(db.String(100))
+    category = db.Column(db.String(50), nullable=True)  # VehicleCategory value
     active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -105,7 +118,9 @@ class Document(db.Model):
     vendor = db.Column(db.String(255))
     issue_date = db.Column(db.Date, nullable=True)
     due_date = db.Column(db.Date, nullable=True)
-    total_amount = db.Column(db.Numeric(12, 2), nullable=True)
+    subtotal_amount = db.Column(db.Numeric(12, 2), nullable=True)  # Base imponible
+    tax_amount = db.Column(db.Numeric(12, 2), nullable=True)  # IVA
+    total_amount = db.Column(db.Numeric(12, 2), nullable=True)  # Total con IVA
     currency = db.Column(db.String(3), default="EUR")
     odometer_km = db.Column(db.Integer, nullable=True)
 
@@ -126,9 +141,12 @@ class FuelEntry(db.Model):
     document_id = db.Column(db.Integer, ForeignKey("document.id"), nullable=True)
     vehicle_id = db.Column(db.Integer, ForeignKey("vehicle.id"), nullable=False)
     date = db.Column(db.Date, nullable=False)
+    kilometers = db.Column(db.Integer, nullable=True)  # Kilómetros del vehículo al repostar
     liters = db.Column(db.Numeric(10, 2), nullable=False)
     price_per_liter = db.Column(db.Numeric(8, 4), nullable=False)
-    total_amount = db.Column(db.Numeric(12, 2), nullable=False)
+    subtotal_amount = db.Column(db.Numeric(12, 2), nullable=True)  # Base imponible
+    tax_amount = db.Column(db.Numeric(12, 2), nullable=True)  # IVA
+    total_amount = db.Column(db.Numeric(12, 2), nullable=False)  # Total con IVA
     station = db.Column(db.String(255))
     fuel_type = db.Column(db.String(50))
 
@@ -146,7 +164,9 @@ class ExpenseEntry(db.Model):
     vehicle_id = db.Column(db.Integer, ForeignKey("vehicle.id"), nullable=False)
     date = db.Column(db.Date, nullable=False)
     category = db.Column(db.String(50), nullable=False)  # ExpenseCategory value
-    total_amount = db.Column(db.Numeric(12, 2), nullable=False)
+    subtotal_amount = db.Column(db.Numeric(12, 2), nullable=True)  # Base imponible
+    tax_amount = db.Column(db.Numeric(12, 2), nullable=True)  # IVA
+    total_amount = db.Column(db.Numeric(12, 2), nullable=False)  # Total con IVA
     vendor = db.Column(db.String(255))
 
     document = relationship("Document", back_populates="expense_entry")
@@ -178,6 +198,10 @@ class TelegramSession(db.Model):
     user_id = db.Column(db.Integer, ForeignKey("user.id"), nullable=False, unique=True)
     current_vehicle_id = db.Column(db.Integer, ForeignKey("vehicle.id"), nullable=True)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    pending_action = db.Column(db.String(50), nullable=True)  # 'upload_ticket', 'upload_document', 'waiting_plate', 'waiting_km'
+    pending_vehicle_id = db.Column(db.Integer, ForeignKey("vehicle.id"), nullable=True)
+    pending_file_id = db.Column(db.String(255), nullable=True)
+    pending_file_path = db.Column(db.String(255), nullable=True)
 
     user = relationship("User", back_populates="sessions")
-    current_vehicle = relationship("Vehicle")
+    current_vehicle = relationship("Vehicle", foreign_keys=[current_vehicle_id])

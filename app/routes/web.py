@@ -29,6 +29,7 @@ from app.services.reporting_service import (
     expenses_by_category,
     export_csv_report,
     fuel_consumption_by_vehicle,
+    get_vehicle_statistics,
     upcoming_due_dates,
 )
 
@@ -37,6 +38,8 @@ web_bp = Blueprint("web", __name__)
 PER_PAGE = 20
 DOC_TYPE_LABELS = {
     "fuel_ticket": "Ticket combustible",
+    "invoice": "Factura",
+    "delivery_note": "Albarán",
     "insurance_policy": "Póliza seguro",
     "itv": "ITV",
     "tachograph": "Tacógrafo",
@@ -59,11 +62,22 @@ def index():
     reminders = upcoming_due_dates(30)
     if vehicle_id:
         reminders = [r for r in reminders if r["vehicle_id"] == vehicle_id]
+    
+    # Obtener vehículos con sus KPIs
+    vehicles = Vehicle.query.filter(Vehicle.active == True).all()
+    vehicles_with_kpis = []
+    for vehicle in vehicles:
+        vehicle_kpis = dashboard_kpis(vehicle.id)
+        vehicles_with_kpis.append({
+            "vehicle": vehicle,
+            "kpis": vehicle_kpis
+        })
+    
     return render_template(
         "dashboard.html",
         kpis=kpis,
         reminders=reminders[:10],
-        vehicles=Vehicle.query.filter(Vehicle.active == True).all(),
+        vehicles_with_kpis=vehicles_with_kpis,
     )
 
 
@@ -93,6 +107,7 @@ def vehicle_create():
             alias=request.form.get("alias", "").strip() or None,
             brand=request.form.get("brand", "").strip() or None,
             model=request.form.get("model", "").strip() or None,
+            category=request.form.get("category", "").strip() or None,
             active=True,
         )
         db.session.add(v)
@@ -109,6 +124,7 @@ def vehicle_edit(vid):
         v.alias = request.form.get("alias", "").strip() or None
         v.brand = request.form.get("brand", "").strip() or None
         v.model = request.form.get("model", "").strip() or None
+        v.category = request.form.get("category", "").strip() or None
         v.active = request.form.get("active") == "1"
         db.session.commit()
         flash("Vehículo actualizado.", "success")
@@ -123,6 +139,16 @@ def vehicle_delete(vid):
     db.session.commit()
     flash("Vehículo desactivado.", "info")
     return redirect(url_for("web.vehicle_list"))
+
+
+@web_bp.route("/vehiculos/<int:vid>")
+def vehicle_detail(vid):
+    """Página de detalle del vehículo con todas sus estadísticas."""
+    stats = get_vehicle_statistics(vid)
+    if not stats.get("vehicle"):
+        abort(404)
+    
+    return render_template("vehicles/detail.html", **stats)
 
 
 # --- Documentos ---
@@ -195,6 +221,29 @@ def document_reprocess(did):
         flash(msg, "success")
     else:
         flash(msg, "danger")
+    return redirect(url_for("web.document_detail", did=did))
+
+
+@web_bp.route("/documentos/<int:did>/crear-recordatorio", methods=["POST"])
+def document_create_reminder(did):
+    """Crea un recordatorio manualmente desde un documento procesado."""
+    from app.services.reminders_service import create_reminder_from_processed_document
+    
+    doc = Document.query.get_or_404(did)
+    if not doc.due_date:
+        flash("El documento no tiene fecha de vencimiento.", "danger")
+        return redirect(url_for("web.document_detail", did=did))
+    
+    if not doc.vehicle_id:
+        flash("El documento no está asociado a un vehículo.", "danger")
+        return redirect(url_for("web.document_detail", did=did))
+    
+    reminder = create_reminder_from_processed_document(doc)
+    if reminder:
+        flash("Recordatorio creado correctamente.", "success")
+    else:
+        flash("No se pudo crear el recordatorio. Verifica que el tipo de documento sea seguro, ITV o tacógrafo.", "warning")
+    
     return redirect(url_for("web.document_detail", did=did))
 
 
@@ -286,7 +335,8 @@ def reports():
 
     fuel_data = fuel_consumption_by_vehicle(vehicle_id, df, dt)
     expense_data = expenses_by_category(vehicle_id, df, dt)
-    reminders_data = upcoming_due_dates(90)
+    # Mostrar todos los vencimientos activos en reportes
+    reminders_data = upcoming_due_dates(None)
     if vehicle_id:
         reminders_data = [r for r in reminders_data if r["vehicle_id"] == vehicle_id]
 
@@ -327,7 +377,8 @@ def report_export(report_type):
 @web_bp.route("/recordatorios")
 def reminders_list():
     vehicle_id = request.args.get("vehicle_id", type=int)
-    data = upcoming_due_dates(90)
+    # Mostrar todos los vencimientos activos
+    data = upcoming_due_dates(None)
     if vehicle_id:
         data = [r for r in data if r["vehicle_id"] == vehicle_id]
     vehicles = Vehicle.query.filter(Vehicle.active == True).all()
