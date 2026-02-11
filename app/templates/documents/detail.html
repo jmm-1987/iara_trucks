@@ -40,6 +40,11 @@
                         </button>
                     </form>
                     {% endif %}
+                    <form method="post" action="{{ url_for('web.document_delete', did=doc.id) }}" class="d-inline">
+                        <button type="submit" class="btn btn-outline-danger" onclick="return confirm('¿Estás seguro de borrar este documento? Se borrarán también todos los registros relacionados (combustible, gastos, recordatorios). Esta acción no se puede deshacer.')">
+                            <i class="bi bi-trash me-1"></i> Borrar
+                        </button>
+                    </form>
                 </div>
             </div>
         </div>

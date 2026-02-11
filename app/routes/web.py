@@ -8,6 +8,7 @@ from flask import (
     Response,
     Blueprint,
     abort,
+    current_app,
     flash,
     redirect,
     render_template,
@@ -245,6 +246,59 @@ def document_create_reminder(did):
         flash("No se pudo crear el recordatorio. Verifica que el tipo de documento sea seguro, ITV o tacógrafo.", "warning")
     
     return redirect(url_for("web.document_detail", did=did))
+
+
+@web_bp.route("/documentos/<int:did>/eliminar", methods=["POST"])
+def document_delete(did):
+    """Borra un documento y todos sus registros relacionados."""
+    from app.models import FuelEntry, ExpenseEntry, Reminder
+    import os
+    
+    doc = Document.query.get_or_404(did)
+    vehicle_id = doc.vehicle_id  # Guardar para redirigir después
+    
+    try:
+        # Borrar FuelEntry asociado
+        fuel_entry = FuelEntry.query.filter_by(document_id=doc.id).first()
+        if fuel_entry:
+            db.session.delete(fuel_entry)
+        
+        # Borrar ExpenseEntry asociado
+        expense_entry = ExpenseEntry.query.filter_by(document_id=doc.id).first()
+        if expense_entry:
+            db.session.delete(expense_entry)
+        
+        # Borrar Reminder asociado
+        reminder = Reminder.query.filter_by(document_id=doc.id).first()
+        if reminder:
+            db.session.delete(reminder)
+        
+        # Borrar archivo físico
+        if doc.file_path:
+            upload_dir = Path(current_app.config["UPLOAD_FOLDER"])
+            file_path = upload_dir / doc.file_path
+            if file_path.exists():
+                try:
+                    os.remove(str(file_path))
+                except OSError:
+                    pass  # Si no se puede borrar, continuar
+        
+        # Borrar el documento
+        db.session.delete(doc)
+        db.session.commit()
+        
+        flash("Documento y registros relacionados borrados correctamente.", "success")
+        
+        # Redirigir a la lista de documentos o al vehículo si existe
+        if vehicle_id:
+            return redirect(url_for("web.document_list", vehicle_id=vehicle_id))
+        else:
+            return redirect(url_for("web.document_list"))
+            
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error al borrar el documento: {str(e)}", "danger")
+        return redirect(url_for("web.document_detail", did=did))
 
 
 @web_bp.route("/uploads/<path:filename>")
