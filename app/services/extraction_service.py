@@ -127,12 +127,15 @@ def validate_and_enrich(extracted: dict, vehicle_plate: str | None = None) -> di
         fuel["total_amount"] = fuel["liters"] * fuel["price_per_liter"]
     result["fuel"] = fuel
 
-    # Odómetro
-    if result.get("odometer_km") is not None:
+    # Kilómetros (cuentakilómetros)
+    km_val = result.get("kilometers") or result.get("odometer_km")
+    if km_val is not None:
         try:
-            result["odometer_km"] = int(float(result["odometer_km"]))
+            result["kilometers"] = int(float(km_val))
         except (ValueError, TypeError):
-            result["odometer_km"] = None
+            result["kilometers"] = None
+    if "odometer_km" in result:
+        del result["odometer_km"]
 
     # Matrícula
     if vehicle_plate:

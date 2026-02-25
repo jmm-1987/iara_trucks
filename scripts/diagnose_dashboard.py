@@ -86,3 +86,4 @@ with app.app_context():
     print("FIN DEL DIAGNOSTICO")
     print("=" * 60)
 
+

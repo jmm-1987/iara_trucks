@@ -122,7 +122,7 @@ class Document(db.Model):
     tax_amount = db.Column(db.Numeric(12, 2), nullable=True)  # IVA
     total_amount = db.Column(db.Numeric(12, 2), nullable=True)  # Total con IVA
     currency = db.Column(db.String(3), default="EUR")
-    odometer_km = db.Column(db.Integer, nullable=True)
+    kilometers = db.Column("odometer_km", db.Integer, nullable=True)  # Kilómetros (cuentakilómetros) en el documento
 
     vehicle = relationship("Vehicle", back_populates="documents")
     user = relationship("User", back_populates="documents")

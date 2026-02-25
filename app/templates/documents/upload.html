@@ -5,29 +5,137 @@
 {% if not vehicles %}
 <div class="alert alert-warning">No hay vehículos. <a href="{{ url_for('web.vehicle_create') }}">Crea uno primero</a>.</div>
 {% else %}
-<div class="card" style="max-width: 500px;">
-    <div class="card-body">
+<ul class="nav nav-tabs mb-4" role="tablist">
+  <li class="nav-item">
+    <button class="nav-link active" id="tab-file" data-bs-toggle="tab" data-bs-target="#panel-file" type="button">Subir archivo</button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" id="tab-manual" data-bs-toggle="tab" data-bs-target="#panel-manual" type="button">Entrada manual</button>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <div class="tab-pane fade show active" id="panel-file">
+    <div class="card" style="max-width: 500px;">
+      <div class="card-body">
         <form method="post" enctype="multipart/form-data">
-            <div class="mb-3">
-                <label class="form-label">Vehículo <span class="text-danger">*</span></label>
-                <select name="vehicle_id" class="form-select" required>
-                    <option value="">Seleccionar...</option>
-                    {% for v in vehicles %}
-                    <option value="{{ v.id }}">{{ v.plate }}{% if v.alias %} ({{ v.alias }}){% endif %}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Archivo (jpg, png, pdf) <span class="text-danger">*</span></label>
-                <input type="file" name="file" class="form-control" accept=".jpg,.jpeg,.png,.pdf" required>
-                <small class="text-muted">Máx. 10 MB. Se procesará con IA para extraer datos.</small>
-            </div>
-            <button type="submit" class="btn btn-primary">
-                <i class="bi bi-upload me-1"></i> Subir y procesar
-            </button>
-            <a href="{{ url_for('web.document_list') }}" class="btn btn-secondary">Cancelar</a>
+          <input type="hidden" name="entry_mode" value="">
+          <div class="mb-3">
+            <label class="form-label">Vehículo <span class="text-danger">*</span></label>
+            <select name="vehicle_id" class="form-select" required>
+              <option value="">Seleccionar...</option>
+              {% for v in vehicles %}
+              <option value="{{ v.id }}">{{ v.plate }}{% if v.alias %} ({{ v.alias }}){% endif %}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Archivo (jpg, png, pdf) <span class="text-danger">*</span></label>
+            <input type="file" name="file" class="form-control" accept=".jpg,.jpeg,.png,.pdf" required>
+            <small class="text-muted">Máx. 10 MB. Se procesará con IA para extraer datos.</small>
+          </div>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-upload me-1"></i> Subir y procesar
+          </button>
+          <a href="{{ url_for('web.document_list') }}" class="btn btn-secondary">Cancelar</a>
         </form>
+      </div>
     </div>
+  </div>
+
+  <div class="tab-pane fade" id="panel-manual">
+    <div class="card" style="max-width: 560px;">
+      <div class="card-body">
+        <form method="post" id="form-manual">
+          <input type="hidden" name="entry_mode" value="manual">
+          <div class="mb-3">
+            <label class="form-label">Vehículo <span class="text-danger">*</span></label>
+            <select name="vehicle_id" class="form-select" required>
+              <option value="">Seleccionar...</option>
+              {% for v in vehicles %}
+              <option value="{{ v.id }}">{{ v.plate }}{% if v.alias %} ({{ v.alias }}){% endif %}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Tipo de documento <span class="text-danger">*</span></label>
+            <select name="doc_type" class="form-select" required id="docTypeManual">
+              {% for key, label in doc_type_labels.items() %}
+              <option value="{{ key }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+            <small class="text-muted">Ticket gasoil (con litros y km), Factura taller, ITV, seguro, etc.</small>
+          </div>
+          <div class="row g-2">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Fecha emisión <span class="text-danger">*</span></label>
+              <input type="date" name="issue_date" class="form-control" required>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">Fecha vencimiento</label>
+              <input type="date" name="due_date" class="form-control">
+              <small class="text-muted">Seguro, ITV, tacógrafo</small>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Proveedor / Estación</label>
+            <input type="text" name="vendor" class="form-control" placeholder="Opcional">
+          </div>
+          <div class="row g-2">
+            <div class="col-md-4 mb-3">
+              <label class="form-label">Total (€) <span class="text-danger">*</span></label>
+              <input type="number" name="total_amount" class="form-control" step="0.01" min="0" required placeholder="0.00">
+            </div>
+            <div class="col-md-4 mb-3">
+              <label class="form-label">Base imponible (€)</label>
+              <input type="number" name="subtotal_amount" class="form-control" step="0.01" min="0" placeholder="Opcional">
+            </div>
+            <div class="col-md-4 mb-3">
+              <label class="form-label">IVA (€)</label>
+              <input type="number" name="tax_amount" class="form-control" step="0.01" min="0" placeholder="Opcional">
+            </div>
+          </div>
+          <div id="fuelFieldsManual" class="border rounded p-3 mb-3" style="display: none;">
+            <label class="form-label fw-bold">Combustible</label>
+            <div class="row g-2">
+              <div class="col-md-6">
+                <label class="form-label small">Litros <span class="text-danger">*</span></label>
+                <input type="number" name="liters" id="manualLiters" class="form-control" step="0.01" min="0.001" placeholder="Ej. 50.5">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small">Precio/litro (€)</label>
+                <input type="number" name="price_per_liter" id="manualPriceLiter" class="form-control" step="0.0001" min="0" placeholder="Opcional">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label small">Kilómetros (cuentakilómetros)</label>
+                <input type="number" name="kilometers" id="manualKilometers" class="form-control" min="0" step="1" placeholder="Ej. 125000">
+                <small class="text-muted">Para consumo L/100 km y €/km</small>
+              </div>
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-check2 me-1"></i> Guardar entrada manual
+          </button>
+          <a href="{{ url_for('web.document_list') }}" class="btn btn-secondary">Cancelar</a>
+        </form>
+      </div>
+    </div>
+  </div>
 </div>
+
+<script>
+(function() {
+  var docType = document.getElementById('docTypeManual');
+  var fuelBlock = document.getElementById('fuelFieldsManual');
+  var litersInput = document.getElementById('manualLiters');
+  function toggleFuel() {
+    var isFuel = docType && docType.value === 'fuel_ticket';
+    if (fuelBlock) fuelBlock.style.display = isFuel ? 'block' : 'none';
+    if (litersInput) litersInput.required = isFuel;
+  }
+  if (docType) docType.addEventListener('change', toggleFuel);
+  toggleFuel();
+})();
+</script>
 {% endif %}
 {% endblock %}

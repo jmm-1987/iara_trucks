@@ -1,127 +1,349 @@
 {% extends "base.html" %}
 {% block title %}Reportes - Gestión de Flotas{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Contenedor reportes - estilo muestra */
+.reports-page { --report-bg: #252525; --report-border: #3d3d3d; --report-text: #e0e0e0; --report-input: #2d2d2d; }
+.reports-page .filters-header { width: 100%; padding: 0 0 1rem 0; margin: 0; overflow: visible; }
+.reports-page .dock-container {
+    display: flex; justify-content: space-evenly; align-items: center; gap: 0.5rem;
+    padding: 0.4rem 1.5rem; margin: 0 auto; max-width: 100%;
+    background: var(--report-bg); border-radius: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+    border: 1px solid var(--report-border); flex-wrap: wrap;
+}
+.reports-page .dock-item { position: relative; display: flex; align-items: center; justify-content: center; overflow: visible; }
+.reports-page .dock-button {
+    width: 42px; height: 42px; border-radius: 50%; border: none; background: var(--report-input);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); box-shadow: 0 3px 12px rgba(0,0,0,0.4);
+    color: var(--report-text);
+}
+.reports-page .dock-tooltip {
+    position: absolute; bottom: -35px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.85); color: white; padding: 0.4rem 0.8rem; border-radius: 6px;
+    font-size: 0.75rem; white-space: nowrap; opacity: 0; visibility: hidden; transition: all 0.3s ease; pointer-events: none; z-index: 1000;
+}
+.reports-page .dock-button:hover .dock-tooltip { opacity: 1; visibility: visible; bottom: -40px; }
+.reports-page .dock-button:hover {
+    transform: translateY(-6px) scale(1.1); background: linear-gradient(135deg, rgba(76,175,80,0.3), rgba(255,152,0,0.2));
+    box-shadow: 0 8px 25px rgba(76,175,80,0.3);
+}
+.reports-page .dock-icon { width: 18px; height: 18px; stroke-width: 2; }
+.reports-page .dock-menu {
+    position: absolute; left: 50%; top: calc(100% + 10px); transform: translateX(-50%) scale(0);
+    transform-origin: top center; opacity: 0; visibility: hidden;
+    transition: opacity 0.4s, visibility 0.4s, transform 0.4s; z-index: 10000; pointer-events: none;
+}
+.reports-page .dock-item.active .dock-menu {
+    opacity: 1; visibility: visible; pointer-events: all; transform: translateX(-50%) scale(1);
+}
+.reports-page .dock-menu-content {
+    background: var(--report-bg); border-radius: 15px; padding: 0.5rem;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5); border: 1px solid var(--report-border);
+    min-width: 180px;
+}
+.reports-page .dock-option {
+    display: flex; align-items: center; padding: 0.75rem 1rem; cursor: pointer; border-radius: 10px;
+    transition: all 0.2s ease; margin: 0.25rem 0; color: var(--report-text);
+}
+.reports-page .dock-option:hover { background: rgba(76,175,80,0.15); transform: translateX(5px); }
+.reports-page .dock-option input[type="radio"] { margin-right: 0.75rem; cursor: pointer; accent-color: #1e3a5f; }
+.reports-page .dock-date-input {
+    width: 100%; padding: 0.75rem 1rem; border: 2px solid var(--report-border); border-radius: 10px;
+    font-size: 0.9rem; background: var(--report-input); color: var(--report-text);
+}
+.reports-page .dock-button-primary { background: linear-gradient(135deg, #1e3a5f, #2c5f8f); color: white; }
+.reports-page .dock-button-primary:hover { background: linear-gradient(135deg, #2c5f8f, #3d7fb8); }
+.reports-page .dock-action .dock-button { text-decoration: none; color: white; }
+.reports-page .dock-button-secondary { background: linear-gradient(135deg, #6c757d, #8e9ba8); color: white; }
+.reports-page .dock-button-secondary:hover { background: linear-gradient(135deg, #5a6268, #6c757d); }
+
+/* Barra exportar */
+.reports-page .export-bar {
+    display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1.25rem;
+    padding: 0.5rem 0; align-items: center;
+}
+.reports-page .export-bar a {
+    display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.5rem 1rem;
+    border-radius: 12px; font-size: 0.85rem; font-weight: 600; text-decoration: none;
+    background: var(--report-input); color: var(--report-text); border: 1px solid var(--report-border);
+    transition: all 0.3s ease; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+}
+.reports-page .export-bar a:hover {
+    background: rgba(76,175,80,0.2); border-color: #4caf50; transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(76,175,80,0.25);
+}
+
+/* Cards y tablas estilo muestra */
+.reports-page .report-title { font-size: 1.1rem; font-weight: 600; color: #1a1d23; margin-bottom: 1.25rem; }
+.reports-page .report-card {
+    background: var(--report-bg); border: 1px solid var(--report-border); border-radius: 16px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.2); margin-bottom: 1.25rem; overflow: hidden;
+}
+.reports-page .report-card-header {
+    padding: 0.85rem 1.25rem; font-weight: 600; font-size: 0.95rem; color: var(--report-text);
+    background: rgba(0,0,0,0.2); border-bottom: 1px solid var(--report-border);
+}
+.reports-page .report-card-body { padding: 1rem 1.25rem; }
+.reports-page .report-table {
+    width: 100%; font-size: 0.85rem; color: var(--report-text); border-collapse: collapse;
+}
+.reports-page .report-table th {
+    text-align: left; padding: 0.6rem 0.75rem; background: var(--report-input);
+    border-bottom: 1px solid var(--report-border); color: #b0b0b0; font-weight: 600;
+}
+.reports-page .report-table td { padding: 0.6rem 0.75rem; border-bottom: 1px solid rgba(61,61,61,0.5); }
+.reports-page .report-table tbody tr:hover { background: rgba(76,175,80,0.08); }
+.reports-page .report-empty { color: #888; font-size: 0.9rem; margin: 0; }
+.reports-page .report-badge { padding: 0.25rem 0.5rem; border-radius: 6px; font-size: 0.8rem; font-weight: 600; }
+.reports-page .report-badge.danger { background: #dc3545; color: white; }
+.reports-page .report-badge.warning { background: #ffc107; color: #1a1d23; }
+.reports-page .report-badge.secondary { background: #6c757d; color: white; }
+</style>
+{% endblock %}
+
 {% block content %}
-<h1 class="h3 mb-4">Reportes</h1>
+<div class="reports-page">
+    <h1 class="report-title">Reportes</h1>
 
-<form method="get" class="card mb-3">
-    <div class="card-body">
-        <div class="row g-2 align-items-end">
-            <div class="col-md-2">
-                <label class="form-label small">Vehículo</label>
-                <select name="vehicle_id" class="form-select form-select-sm">
-                    <option value="">Todos</option>
-                    {% for v in vehicles %}
-                    <option value="{{ v.id }}" {% if filters.vehicle_id == v.id %}selected{% endif %}>{{ v.plate }}</option>
+    <div class="filters-header">
+        <form method="get" id="reportFilterForm" class="filter-form">
+            <div class="dock-container">
+                <!-- Vehículo -->
+                <div class="dock-item" data-filter="vehicle">
+                    <button type="button" class="dock-button" onclick="toggleDockMenu(this)" title="Vehículo">
+                        <svg class="dock-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+                        </svg>
+                        <span class="dock-tooltip">Vehículo</span>
+                    </button>
+                    <div class="dock-menu">
+                        <div class="dock-menu-content">
+                            <label class="dock-option">
+                                <input type="radio" name="vehicle_id" value="" {% if not filters.vehicle_id %}checked{% endif %}>
+                                <span>🚛 Todos</span>
+                            </label>
+                            {% for v in vehicles %}
+                            <label class="dock-option">
+                                <input type="radio" name="vehicle_id" value="{{ v.id }}" {% if filters.vehicle_id == v.id %}checked{% endif %}>
+                                <span>{{ v.plate }}</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+                <!-- Desde -->
+                <div class="dock-item" data-filter="date_from">
+                    <button type="button" class="dock-button" onclick="toggleDockMenu(this)" title="Desde">
+                        <svg class="dock-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                        <span class="dock-tooltip">Desde</span>
+                    </button>
+                    <div class="dock-menu">
+                        <div class="dock-menu-content">
+                            <input type="date" name="date_from" value="{{ filters.date_from }}" class="dock-date-input">
+                        </div>
+                    </div>
+                </div>
+                <!-- Hasta -->
+                <div class="dock-item" data-filter="date_to">
+                    <button type="button" class="dock-button" onclick="toggleDockMenu(this)" title="Hasta">
+                        <svg class="dock-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                        <span class="dock-tooltip">Hasta</span>
+                    </button>
+                    <div class="dock-menu">
+                        <div class="dock-menu-content">
+                            <input type="date" name="date_to" value="{{ filters.date_to }}" class="dock-date-input">
+                        </div>
+                    </div>
+                </div>
+                <!-- Filtrar -->
+                <div class="dock-item dock-action">
+                    <button type="submit" class="dock-button dock-button-primary" title="Filtrar">
+                        <svg class="dock-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                        <span class="dock-tooltip">Filtrar</span>
+                    </button>
+                </div>
+                <!-- Limpiar -->
+                <div class="dock-item dock-action">
+                    <a href="{{ url_for('web.reports') }}" class="dock-button dock-button-secondary" title="Limpiar">
+                        <svg class="dock-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                        </svg>
+                        <span class="dock-tooltip">Limpiar</span>
+                    </a>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div class="export-bar">
+        <a href="{{ url_for('web.report_export', report_type='fuel', vehicle_id=filters.vehicle_id, date_from=filters.date_from, date_to=filters.date_to) }}">
+            <i class="bi bi-file-earmark-spreadsheet"></i> Exportar combustible CSV
+        </a>
+        <a href="{{ url_for('web.report_export', report_type='expenses', vehicle_id=filters.vehicle_id, date_from=filters.date_from, date_to=filters.date_to) }}">
+            <i class="bi bi-file-earmark-spreadsheet"></i> Exportar gastos CSV
+        </a>
+        <a href="{{ url_for('web.report_export', report_type='reminders', vehicle_id=filters.vehicle_id) }}">
+            <i class="bi bi-file-earmark-spreadsheet"></i> Exportar vencimientos CSV
+        </a>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-6">
+            <div class="report-card">
+                <div class="report-card-header">Consumo combustible (litros y coste por mes)</div>
+                <div class="report-card-body">
+                    {% if fuel_data %}
+                    <table class="report-table">
+                        <thead><tr><th>Vehículo</th><th>Mes</th><th>Litros</th><th>Base</th><th>IVA</th><th>Total</th></tr></thead>
+                        <tbody>
+                            {% for r in fuel_data %}
+                            <tr>
+                                <td>{{ r.vehicle_plate }}</td>
+                                <td>{{ r.month }}</td>
+                                <td>{{ "%.1f"|format(r.total_liters or 0) }}</td>
+                                <td>{% if r.subtotal_amount %}{{ "%.2f"|format(r.subtotal_amount) }} €{% else %}-{% endif %}</td>
+                                <td>{% if r.tax_amount %}{{ "%.2f"|format(r.tax_amount) }} €{% else %}-{% endif %}</td>
+                                <td>{{ "%.2f"|format(r.total_amount or 0) }} €</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <p class="report-empty">Sin datos de combustible.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="report-card">
+                <div class="report-card-header">Gastos por categoría</div>
+                <div class="report-card-body">
+                    {% if expense_data %}
+                    <table class="report-table">
+                        <thead><tr><th>Vehículo</th><th>Categoría</th><th>Base</th><th>IVA</th><th>Total</th></tr></thead>
+                        <tbody>
+                            {% for r in expense_data %}
+                            <tr>
+                                <td>{{ r.vehicle_plate }}</td>
+                                <td>{{ r.category }}</td>
+                                <td>{% if r.subtotal_amount %}{{ "%.2f"|format(r.subtotal_amount) }} €{% else %}-{% endif %}</td>
+                                <td>{% if r.tax_amount %}{{ "%.2f"|format(r.tax_amount) }} €{% else %}-{% endif %}</td>
+                                <td>{{ "%.2f"|format(r.total_amount or 0) }} €</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                    {% else %}
+                    <p class="report-empty">Sin datos de gastos.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="report-card">
+        <div class="report-card-header">Tickets combustible (detalle con kilómetros)</div>
+        <div class="report-card-body">
+            {% if fuel_tickets %}
+            <table class="report-table">
+                <thead>
+                    <tr>
+                        <th>Fecha</th>
+                        <th>Vehículo</th>
+                        <th>Litros</th>
+                        <th>Total</th>
+                        <th>Kilómetros</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for fe in fuel_tickets %}
+                    {% set km = fe.kilometers or (fe.document and fe.document.kilometers) %}
+                    <tr>
+                        <td>{{ fe.date }}</td>
+                        <td>{{ fe.vehicle.plate if fe.vehicle else '-' }}</td>
+                        <td>{{ "%.2f"|format(fe.liters or 0) }}</td>
+                        <td>{{ "%.2f"|format(fe.total_amount or 0) }} €</td>
+                        <td>{{ km if km is not none else '-' }}</td>
+                    </tr>
                     {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-2">
-                <label class="form-label small">Desde</label>
-                <input type="date" name="date_from" class="form-control form-control-sm" value="{{ filters.date_from }}">
-            </div>
-            <div class="col-md-2">
-                <label class="form-label small">Hasta</label>
-                <input type="date" name="date_to" class="form-control form-control-sm" value="{{ filters.date_to }}">
-            </div>
-            <div class="col-md-2">
-                <button type="submit" class="btn btn-sm btn-primary">Filtrar</button>
-            </div>
+                </tbody>
+            </table>
+            {% else %}
+            <p class="report-empty">Sin tickets de combustible en el periodo.</p>
+            {% endif %}
         </div>
     </div>
-</form>
 
-<div class="row mb-3">
-    <div class="col">
-        <a href="{{ url_for('web.report_export', report_type='fuel', vehicle_id=filters.vehicle_id, date_from=filters.date_from, date_to=filters.date_to) }}" class="btn btn-sm btn-outline-success">Exportar combustible CSV</a>
-        <a href="{{ url_for('web.report_export', report_type='expenses', vehicle_id=filters.vehicle_id, date_from=filters.date_from, date_to=filters.date_to) }}" class="btn btn-sm btn-outline-success">Exportar gastos CSV</a>
-        <a href="{{ url_for('web.report_export', report_type='reminders', vehicle_id=filters.vehicle_id) }}" class="btn btn-sm btn-outline-success">Exportar vencimientos CSV</a>
-    </div>
-</div>
-
-<div class="row">
-    <div class="col-lg-6">
-        <div class="card mb-3">
-            <div class="card-header">Consumo combustible (litros y coste por mes)</div>
-            <div class="card-body">
-                {% if fuel_data %}
-                <table class="table table-sm">
-                    <thead><tr><th>Vehículo</th><th>Mes</th><th>Litros</th><th>Base imponible</th><th>IVA</th><th>Total</th></tr></thead>
-                    <tbody>
-                        {% for r in fuel_data %}
-                        <tr>
-                            <td>{{ r.vehicle_plate }}</td>
-                            <td>{{ r.month }}</td>
-                            <td>{{ "%.1f"|format(r.total_liters or 0) }}</td>
-                            <td>{% if r.subtotal_amount %}{{ "%.2f"|format(r.subtotal_amount) }} €{% else %}-{% endif %}</td>
-                            <td>{% if r.tax_amount %}{{ "%.2f"|format(r.tax_amount) }} €{% else %}-{% endif %}</td>
-                            <td>{{ "%.2f"|format(r.total_amount or 0) }} €</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                {% else %}
-                <p class="text-muted mb-0">Sin datos de combustible.</p>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-    <div class="col-lg-6">
-        <div class="card mb-3">
-            <div class="card-header">Gastos por categoría</div>
-            <div class="card-body">
-                {% if expense_data %}
-                <table class="table table-sm">
-                    <thead><tr><th>Vehículo</th><th>Categoría</th><th>Base imponible</th><th>IVA</th><th>Total</th></tr></thead>
-                    <tbody>
-                        {% for r in expense_data %}
-                        <tr>
-                            <td>{{ r.vehicle_plate }}</td>
-                            <td>{{ r.category }}</td>
-                            <td>{% if r.subtotal_amount %}{{ "%.2f"|format(r.subtotal_amount) }} €{% else %}-{% endif %}</td>
-                            <td>{% if r.tax_amount %}{{ "%.2f"|format(r.tax_amount) }} €{% else %}-{% endif %}</td>
-                            <td>{{ "%.2f"|format(r.total_amount or 0) }} €</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                {% else %}
-                <p class="text-muted mb-0">Sin datos de gastos.</p>
-                {% endif %}
-            </div>
+    <div class="report-card">
+        <div class="report-card-header">Vencimientos</div>
+        <div class="report-card-body">
+            {% if reminders_data %}
+            <table class="report-table">
+                <thead><tr><th>Vehículo</th><th>Tipo</th><th>Vencimiento</th><th>Días</th></tr></thead>
+                <tbody>
+                    {% for r in reminders_data %}
+                    <tr>
+                        <td>{{ r.vehicle_plate }}</td>
+                        <td>{{ r.kind }}</td>
+                        <td>{{ r.due_date|date_format }}</td>
+                        <td>
+                            {% if r.days_remaining < 0 %}
+                            <span class="report-badge danger">Vencido ({{ -r.days_remaining }})</span>
+                            {% elif r.days_remaining <= 7 %}
+                            <span class="report-badge danger">{{ r.days_remaining }}</span>
+                            {% elif r.days_remaining <= 30 %}
+                            <span class="report-badge warning">{{ r.days_remaining }}</span>
+                            {% else %}
+                            <span class="report-badge secondary">{{ r.days_remaining }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="report-empty">Sin vencimientos próximos.</p>
+            {% endif %}
         </div>
     </div>
 </div>
 
-<div class="card">
-    <div class="card-header">Vencimientos</div>
-    <div class="card-body">
-        {% if reminders_data %}
-        <table class="table table-sm">
-            <thead><tr><th>Vehículo</th><th>Tipo</th><th>Vencimiento</th><th>Días</th></tr></thead>
-            <tbody>
-                {% for r in reminders_data %}
-                <tr>
-                    <td>{{ r.vehicle_plate }}</td>
-                    <td>{{ r.kind }}</td>
-                    <td>{{ r.due_date|date_format }}</td>
-                    <td>
-                        {% if r.days_remaining < 0 %}
-                        <span class="badge bg-danger">Vencido ({{ -r.days_remaining }})</span>
-                        {% elif r.days_remaining <= 7 %}
-                        <span class="badge bg-danger">{{ r.days_remaining }}</span>
-                        {% elif r.days_remaining <= 30 %}
-                        <span class="badge bg-warning">{{ r.days_remaining }}</span>
-                        {% else %}
-                        <span class="badge bg-secondary">{{ r.days_remaining }}</span>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% else %}
-        <p class="text-muted mb-0">Sin vencimientos próximos.</p>
-        {% endif %}
-    </div>
-</div>
+<script>
+function toggleDockMenu(button) {
+    var dockItem = button.closest('.dock-item');
+    var isActive = dockItem.classList.contains('active');
+    document.querySelectorAll('.reports-page .dock-item').forEach(function(item) { item.classList.remove('active'); });
+    if (!isActive) dockItem.classList.add('active');
+}
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.reports-page .dock-item')) {
+        document.querySelectorAll('.reports-page .dock-item').forEach(function(item) { item.classList.remove('active'); });
+    }
+});
+document.addEventListener('DOMContentLoaded', function() {
+    var form = document.getElementById('reportFilterForm');
+    if (form) {
+        form.querySelectorAll('input[type="radio"]').forEach(function(radio) {
+            radio.addEventListener('change', function() {
+                this.closest('.dock-item').classList.remove('active');
+                setTimeout(function() { form.submit(); }, 200);
+            });
+        });
+        form.querySelectorAll('input[type="date"]').forEach(function(input) {
+            input.addEventListener('change', function() {
+                this.closest('.dock-item').classList.remove('active');
+                setTimeout(function() { form.submit(); }, 300);
+            });
+        });
+    }
+});
+</script>
 {% endblock %}

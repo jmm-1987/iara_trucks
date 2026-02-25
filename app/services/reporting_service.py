@@ -197,17 +197,22 @@ def upcoming_due_dates(days_ahead: int | None = 90) -> list[dict]:
     ]
 
 
-def dashboard_kpis(vehicle_id: int | None = None) -> dict:
-    """KPIs rápidos para el dashboard."""
+def dashboard_kpis(
+    vehicle_id: int | None = None,
+    period_start: date | None = None,
+    period_end: date | None = None,
+) -> dict:
+    """KPIs rápidos para el dashboard. Si period_start/period_end son None, se usa el mes actual."""
     import logging
     logger = logging.getLogger(__name__)
-    
+
     today = date.today()
-    month_start = today.replace(day=1)
-    year_start = today.replace(month=1, day=1)
-    # Para mostrar datos aunque no sean del mes actual, usar últimos 90 días
-    days_back = 90
-    date_from = today - timedelta(days=days_back)
+    if period_start is None:
+        period_start = today.replace(day=1)
+    if period_end is None:
+        period_end = today
+    if period_end < period_start:
+        period_end = period_start
 
     # Total vehículos activos
     vq = Vehicle.query.filter(Vehicle.active == True)
@@ -215,11 +220,11 @@ def dashboard_kpis(vehicle_id: int | None = None) -> dict:
         vq = vq.filter(Vehicle.id == vehicle_id)
     total_vehicles = vq.count()
 
-    # Consumo mes actual (para KPIs generales)
-    # Solo contar FuelEntry que tienen documento asociado (document_id IS NOT NULL)
+    # Consumo en el periodo
     fq = FuelEntry.query.filter(
-        FuelEntry.date >= month_start,
-        FuelEntry.document_id.isnot(None)  # Solo FuelEntry con documento asociado
+        FuelEntry.date >= period_start,
+        FuelEntry.date <= period_end,
+        FuelEntry.document_id.isnot(None),
     )
     if vehicle_id:
         fq = fq.filter(FuelEntry.vehicle_id == vehicle_id)
@@ -232,63 +237,18 @@ def dashboard_kpis(vehicle_id: int | None = None) -> dict:
     fuel_liters_month = float(fuel_month.liters or 0) if fuel_month and fuel_month.liters else 0.0
     fuel_subtotal_month = float(fuel_month.subtotal or 0) if fuel_month and fuel_month.subtotal else 0.0
     fuel_amount_month = float(fuel_month.amount or 0) if fuel_month and fuel_month.amount else 0.0
-    
-    # Si no hay datos del mes actual y es para un vehículo específico, mostrar últimos datos disponibles
-    if vehicle_id and fuel_liters_month == 0:
-        # Buscar el último FuelEntry del vehículo con documento asociado
-        last_fuel = FuelEntry.query.filter(
-            FuelEntry.vehicle_id == vehicle_id,
-            FuelEntry.document_id.isnot(None)
-        ).order_by(FuelEntry.date.desc()).first()
-        if last_fuel:
-            # Calcular consumo de los últimos 90 días (solo con documento asociado)
-            fq_recent = FuelEntry.query.filter(
-                FuelEntry.vehicle_id == vehicle_id,
-                FuelEntry.date >= date_from,
-                FuelEntry.document_id.isnot(None)  # Solo FuelEntry con documento asociado
-            )
-            fuel_recent = fq_recent.with_entities(
-                func.sum(FuelEntry.liters).label("liters"),
-                func.sum(FuelEntry.subtotal_amount).label("subtotal"),
-                func.sum(FuelEntry.tax_amount).label("tax"),
-                func.sum(FuelEntry.total_amount).label("amount"),
-            ).first()
-            if fuel_recent and fuel_recent.liters:
-                fuel_liters_month = float(fuel_recent.liters)
-                fuel_subtotal_month = float(fuel_recent.subtotal or 0) if fuel_recent.subtotal else 0.0
-                fuel_amount_month = float(fuel_recent.amount or 0)
-                logger.debug("Vehículo %s: usando datos de últimos %d días (%.1f L)", vehicle_id, days_back, fuel_liters_month)
-    
-    # Debug: contar registros de combustible
-    if vehicle_id:
-        fuel_count = FuelEntry.query.filter(FuelEntry.vehicle_id == vehicle_id).count()
-        logger.debug("Dashboard KPIs para vehículo %s: %d registros de combustible totales", vehicle_id, fuel_count)
 
-    # Gastos mes actual
-    eq = ExpenseEntry.query.filter(ExpenseEntry.date >= month_start)
+    # Gastos en el periodo
+    eq = ExpenseEntry.query.filter(
+        ExpenseEntry.date >= period_start,
+        ExpenseEntry.date <= period_end,
+    )
     if vehicle_id:
         eq = eq.filter(ExpenseEntry.vehicle_id == vehicle_id)
     expenses_month = eq.with_entities(func.sum(ExpenseEntry.total_amount)).scalar()
     expenses_amount_month = float(expenses_month or 0)
-    
-    # Si no hay datos del mes actual y es para un vehículo específico, mostrar últimos datos disponibles
-    if vehicle_id and expenses_amount_month == 0:
-        # Calcular gastos de los últimos 90 días
-        eq_recent = ExpenseEntry.query.filter(
-            ExpenseEntry.vehicle_id == vehicle_id,
-            ExpenseEntry.date >= date_from
-        )
-        expenses_recent = eq_recent.with_entities(func.sum(ExpenseEntry.total_amount)).scalar()
-        if expenses_recent:
-            expenses_amount_month = float(expenses_recent)
-            logger.debug("Vehículo %s: usando gastos de últimos %d días (%.2f €)", vehicle_id, days_back, expenses_amount_month)
-    
-    # Debug: contar registros de gastos
-    if vehicle_id:
-        expense_count = ExpenseEntry.query.filter(ExpenseEntry.vehicle_id == vehicle_id).count()
-        logger.debug("Dashboard KPIs para vehículo %s: %d registros de gastos totales", vehicle_id, expense_count)
 
-    # Vencimientos próximos 30 días
+    # Vencimientos próximos 30 días (siempre desde hoy, no depende del filtro)
     limit_30 = today + timedelta(days=30)
     reminders_30 = Reminder.query.filter(
         Reminder.due_date >= today,
@@ -305,35 +265,19 @@ def dashboard_kpis(vehicle_id: int | None = None) -> dict:
         dq = dq.filter(Document.vehicle_id == vehicle_id)
     pending_docs = dq.count()
 
-    # Determinar si los datos son del mes actual o de los últimos 90 días
-    is_current_month_data = True
-    if vehicle_id:
-        # Verificar si hay datos del mes actual
-        fq_check = FuelEntry.query.filter(
-            FuelEntry.vehicle_id == vehicle_id,
-            FuelEntry.date >= month_start
-        )
-        has_current_month_fuel = fq_check.count() > 0
-        
-        eq_check = ExpenseEntry.query.filter(
-            ExpenseEntry.vehicle_id == vehicle_id,
-            ExpenseEntry.date >= month_start
-        )
-        has_current_month_expenses = eq_check.count() > 0
-        
-        # Si no hay datos del mes actual pero sí hay datos de los últimos 90 días, son datos históricos
-        if not has_current_month_fuel and not has_current_month_expenses and (fuel_liters_month > 0 or expenses_amount_month > 0):
-            is_current_month_data = False
-    
+    # ¿Datos del mes actual o periodo histórico?
+    current_month_start = today.replace(day=1)
+    is_current_month_data = period_start == current_month_start and period_end >= today
+
     return {
         "total_vehicles": total_vehicles,
         "fuel_liters_month": fuel_liters_month,
-        "fuel_subtotal_month": fuel_subtotal_month,  # Base imponible del combustible (sin IVA)
-        "fuel_amount_month": fuel_amount_month,  # Total con IVA
+        "fuel_subtotal_month": fuel_subtotal_month,
+        "fuel_amount_month": fuel_amount_month,
         "expenses_amount_month": expenses_amount_month,
         "count_reminders_30": count_reminders_30,
         "pending_docs": pending_docs,
-        "is_current_month_data": is_current_month_data,  # Indica si los datos son del mes actual o históricos
+        "is_current_month_data": is_current_month_data,
     }
 
 
@@ -348,6 +292,9 @@ def get_vehicle_statistics(vehicle_id: int) -> dict:
         return {}
     
     today = date.today()
+    month_names = ("", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic")
+    month_label = f"{month_names[today.month]} {today.year}"
+    year_label = str(today.year)
     month_start = today.replace(day=1)
     year_start = today.replace(month=1, day=1)
     
@@ -427,6 +374,8 @@ def get_vehicle_statistics(vehicle_id: int) -> dict:
             "fuel_total": float(fuel_year.total or 0) if fuel_year else 0,
             "expenses_total": float(expenses_year or 0),
         },
+        "month_label": month_label,
+        "year_label": year_label,
         "expenses_by_category": expenses_by_cat,
         "fuel_by_month": fuel_by_month,
         "reminders": vehicle_reminders,

@@ -18,6 +18,26 @@ from app.models import (
 )
 from app.services.extraction_service import normalize_date, validate_and_enrich
 from app.services.openai_service import analyze_document_image
+
+logger = logging.getLogger(__name__)
+
+
+def _sync_document_fuelentry_kilometers(doc: Document) -> None:
+    """
+    Sincroniza kilómetros entre Document.kilometers y FuelEntry.kilometers asociado.
+    Si doc tiene kilómetros y fuel_entry no, copia a fuel_entry.
+    Si fuel_entry tiene kilómetros y doc no, copia a doc.
+    """
+    if not doc.id:
+        return  # Documento aún no guardado
+    fuel_entry = FuelEntry.query.filter_by(document_id=doc.id).first()
+    if fuel_entry:
+        if doc.kilometers is not None and fuel_entry.kilometers is None:
+            fuel_entry.kilometers = doc.kilometers
+            logger.debug("Sincronizado doc.kilometers (%s) -> fuel_entry.kilometers", doc.kilometers)
+        elif fuel_entry.kilometers is not None and doc.kilometers is None:
+            doc.kilometers = fuel_entry.kilometers
+            logger.debug("Sincronizado fuel_entry.kilometers (%s) -> doc.kilometers", fuel_entry.kilometers)
 from app.services.reminders_service import update_reminders_from_extraction
 
 logger = logging.getLogger(__name__)
@@ -215,7 +235,9 @@ def process_document(document_id: int) -> tuple[bool, str]:
             doc.tax_amount = Decimal("0")  # Sin IVA
     
     doc.currency = (amounts.get("currency") or "EUR")
-    doc.odometer_km = extracted.get("odometer_km")
+    doc.kilometers = extracted.get("kilometers")
+    # Sincronizar kilómetros con FuelEntry si existe
+    _sync_document_fuelentry_kilometers(doc)
     
     # Convertir Decimal a float para serialización JSON
     def decimal_to_float(obj):
@@ -267,13 +289,18 @@ def process_document(document_id: int) -> tuple[bool, str]:
             
             # Intentar obtener kilómetros desde extracted o desde doc
             kilometers = None
-            if fuel.get("odometer_km"):
+            if fuel.get("kilometers") is not None:
+                try:
+                    kilometers = int(fuel.get("kilometers"))
+                except (ValueError, TypeError):
+                    pass
+            elif fuel.get("odometer_km") is not None:
                 try:
                     kilometers = int(fuel.get("odometer_km"))
                 except (ValueError, TypeError):
                     pass
-            elif doc.odometer_km:
-                kilometers = doc.odometer_km
+            elif doc.kilometers is not None:
+                kilometers = doc.kilometers
             
             # Asegurar que doc.vehicle_id esté disponible y no sea None
             if not doc.vehicle_id:
@@ -293,7 +320,9 @@ def process_document(document_id: int) -> tuple[bool, str]:
                     kilometers=kilometers,
                 )
                 db.session.add(fuel_entry)
-                logger.info("FuelEntry creado para documento %s, vehículo ID %s", doc.id, doc.vehicle_id)
+                db.session.flush()  # Para que fuel_entry tenga ID antes de sincronizar
+                # Sincronizar kilómetros bidireccionalmente
+                _sync_document_fuelentry_kilometers(doc)
                 logger.info("FuelEntry creado para documento %s, vehículo ID %s", doc.id, doc.vehicle_id)
 
     # Crear ExpenseEntry si es gasto
@@ -358,8 +387,9 @@ def build_summary_for_telegram(extracted: dict, doc_type_labels: dict) -> str:
     fuel = extracted.get("fuel") or {}
     if fuel.get("liters"):
         lines.append(f"⛽ Litros: {fuel['liters']} | Precio/L: {fuel.get('price_per_liter', '-')}")
-    if extracted.get("odometer_km"):
-        lines.append(f"🔢 Odómetro: {extracted['odometer_km']} km")
+    km = extracted.get("kilometers") or extracted.get("odometer_km")
+    if km is not None:
+        lines.append(f"🔢 Kilómetros: {km} km")
 
     conf = extracted.get("confidence", 0)
     lines.append(f"✓ Confianza: {int(conf * 100)}%")

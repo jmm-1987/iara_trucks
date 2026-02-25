@@ -59,3 +59,4 @@ with app.app_context():
     print(f"  Total (con IVA): {total_amount:.2f} €")
     print("=" * 60)
 
+

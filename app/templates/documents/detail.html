@@ -21,18 +21,23 @@
                     <tr><th>Base imponible</th><td>{% if doc.subtotal_amount %}{{ "%.2f"|format(doc.subtotal_amount) }} {{ doc.currency or 'EUR' }}{% else %}-{% endif %}</td></tr>
                     <tr><th>IVA</th><td>{% if doc.tax_amount %}{{ "%.2f"|format(doc.tax_amount) }} {{ doc.currency or 'EUR' }}{% else %}-{% endif %}</td></tr>
                     <tr><th>Importe total</th><td>{% if doc.total_amount %}{{ "%.2f"|format(doc.total_amount) }} {{ doc.currency or 'EUR' }}{% else %}-{% endif %}</td></tr>
-                    <tr><th>Odómetro</th><td>{{ doc.odometer_km or '-' }}</td></tr>
+                    <tr><th>Kilómetros</th><td>
+                    {% set km = (doc.fuel_entry.kilometers if doc.fuel_entry and doc.fuel_entry.kilometers is not none else doc.kilometers) if doc.fuel_entry else doc.kilometers %}
+                    {{ km if km is not none else '-' }}
+                </td></tr>
                     <tr><th>Subido</th><td>{{ doc.uploaded_at|date_format }}</td></tr>
                     {% if doc.error_message %}
                     <tr><th>Error</th><td class="text-danger">{{ doc.error_message }}</td></tr>
                     {% endif %}
                 </table>
-                <div class="d-flex gap-2">
+                <div class="d-flex gap-2 flex-wrap">
+                    {% if doc.file_path != 'manual' %}
                     <form method="post" action="{{ url_for('web.document_reprocess', did=doc.id) }}" class="d-inline">
                         <button type="submit" class="btn btn-outline-warning" onclick="return confirm('¿Reprocesar documento?')">
                             <i class="bi bi-arrow-clockwise me-1"></i> Reprocesar
                         </button>
                     </form>
+                    {% endif %}
                     {% if doc.due_date and doc.vehicle_id and doc.doc_type in ['insurance_policy', 'itv', 'tachograph'] %}
                     <form method="post" action="{{ url_for('web.document_create_reminder', did=doc.id) }}" class="d-inline">
                         <button type="submit" class="btn btn-outline-info" onclick="return confirm('¿Crear recordatorio de vencimiento?')">
@@ -55,7 +60,9 @@
             <div class="card-body text-center">
                 {% set fname = doc.file_path.replace('\\','/').split('/')[-1] if doc.file_path else '' %}
                 {% set ext = fname.split('.')[-1]|lower if fname else '' %}
-                {% if ext in ['jpg','jpeg','png'] %}
+                {% if doc.file_path == 'manual' %}
+                <p class="text-muted mb-0">Entrada manual (sin archivo adjunto).</p>
+                {% elif ext in ['jpg','jpeg','png'] %}
                 <img src="{{ url_for('web.serve_upload', filename=fname) }}" 
                      class="img-fluid document-thumbnail" 
                      style="max-height: 400px; cursor: zoom-in;" 

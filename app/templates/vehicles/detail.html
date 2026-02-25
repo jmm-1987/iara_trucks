@@ -1,245 +1,325 @@
 {% extends "base.html" %}
-{% block title %}{{ vehicle.plate }} - Detalle Vehículo{% endblock %}
-{% block content %}
-<h1 class="h3 mb-4">
-    <a href="{{ url_for('web.vehicle_list') }}" class="text-decoration-none me-2">←</a>
-    {{ vehicle.plate }}
-    {% if vehicle.alias %}<small class="text-muted">({{ vehicle.alias }})</small>{% endif %}
-</h1>
-
-<div class="row mb-4">
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body text-center">
-                <div class="text-muted small">Combustible (mes)</div>
-                <h4 class="mb-0">{{ "%.1f"|format(kpis_month.fuel_liters) }} L</h4>
-                <small class="text-muted">{{ "%.2f"|format(kpis_month.fuel_total) }} €</small>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body text-center">
-                <div class="text-muted small">Gastos (mes)</div>
-                <h4 class="mb-0">{{ "%.2f"|format(kpis_month.expenses_total) }} €</h4>
-                <small class="text-muted">Base: {{ "%.2f"|format(kpis_month.expenses_subtotal) }} € + IVA: {{ "%.2f"|format(kpis_month.expenses_tax) }} €</small>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body text-center">
-                <div class="text-muted small">Combustible (año)</div>
-                <h4 class="mb-0">{{ "%.1f"|format(kpis_year.fuel_liters) }} L</h4>
-                <small class="text-muted">{{ "%.2f"|format(kpis_year.fuel_total) }} €</small>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card">
-            <div class="card-body text-center">
-                <div class="text-muted small">Gastos (año)</div>
-                <h4 class="mb-0">{{ "%.2f"|format(kpis_year.expenses_total) }} €</h4>
-            </div>
-        </div>
-    </div>
-</div>
-
-{% if consumption_stats.liters_per_100km %}
-<div class="row mb-4">
-    <div class="col-md-4">
-        <div class="card">
-            <div class="card-body text-center">
-                <div class="text-muted small">Consumo (L/100km)</div>
-                <h4 class="mb-0">{{ "%.2f"|format(consumption_stats.liters_per_100km) }} L/100km</h4>
-                <small class="text-muted">{{ consumption_stats.total_km }} km recorridos</small>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card">
-            <div class="card-body text-center">
-                <div class="text-muted small">Coste por km</div>
-                <h4 class="mb-0">{{ "%.4f"|format(consumption_stats.cost_per_km) }} €/km</h4>
-                <small class="text-muted">{{ "%.2f"|format(consumption_stats.total_cost) }} € total</small>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card">
-            <div class="card-body text-center">
-                <div class="text-muted small">Litros consumidos</div>
-                <h4 class="mb-0">{{ "%.1f"|format(consumption_stats.total_liters) }} L</h4>
-                <small class="text-muted">En {{ consumption_stats.total_km }} km</small>
-            </div>
-        </div>
-    </div>
-</div>
-{% endif %}
-
-<div class="row">
-    <div class="col-lg-6">
-        <div class="card mb-3">
-            <div class="card-header">Información del vehículo</div>
-            <div class="card-body">
-                <table class="table table-sm">
-                    <tr><th>Matrícula</th><td>{{ vehicle.plate }}</td></tr>
-                    {% if vehicle.alias %}<tr><th>Alias</th><td>{{ vehicle.alias }}</td></tr>{% endif %}
-                    {% if vehicle.brand %}<tr><th>Marca</th><td>{{ vehicle.brand }}</td></tr>{% endif %}
-                    {% if vehicle.model %}<tr><th>Modelo</th><td>{{ vehicle.model }}</td></tr>{% endif %}
-                    {% if vehicle.category %}<tr><th>Categoría</th><td><span class="badge bg-info">{{ vehicle.category|title }}</span></td></tr>{% endif %}
-                    <tr><th>Estado</th><td>{% if vehicle.active %}<span class="badge bg-success">Activo</span>{% else %}<span class="badge bg-secondary">Inactivo</span>{% endif %}</td></tr>
-                </table>
-                <a href="{{ url_for('web.vehicle_edit', vid=vehicle.id) }}" class="btn btn-sm btn-outline-secondary">Editar</a>
-            </div>
-        </div>
-    </div>
-    <div class="col-lg-6">
-        <div class="card mb-3">
-            <div class="card-header">Vencimientos</div>
-            <div class="card-body">
-                {% if reminders %}
-                <table class="table table-sm">
-                    <thead><tr><th>Tipo</th><th>Vencimiento</th><th>Días</th></tr></thead>
-                    <tbody>
-                        {% for r in reminders %}
-                        <tr>
-                            <td>{{ r.kind }}</td>
-                            <td>{{ r.due_date|date_format }}</td>
-                            <td>
-                                {% if r.days_remaining < 0 %}
-                                <span class="badge bg-danger">Vencido ({{ -r.days_remaining }})</span>
-                                {% elif r.days_remaining <= 7 %}
-                                <span class="badge bg-danger">{{ r.days_remaining }}</span>
-                                {% elif r.days_remaining <= 30 %}
-                                <span class="badge bg-warning">{{ r.days_remaining }}</span>
-                                {% else %}
-                                <span class="badge bg-secondary">{{ r.days_remaining }}</span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                {% else %}
-                <p class="text-muted mb-0">No hay vencimientos registrados.</p>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row">
-    <div class="col-lg-6">
-        <div class="card mb-3">
-            <div class="card-header">Gastos por categoría (año actual)</div>
-            <div class="card-body">
-                {% if expenses_by_category %}
-                <table class="table table-sm">
-                    <thead><tr><th>Categoría</th><th>Base</th><th>IVA</th><th>Total</th></tr></thead>
-                    <tbody>
-                        {% for e in expenses_by_category %}
-                        <tr>
-                            <td>{{ e.category }}</td>
-                            <td>{% if e.subtotal_amount %}{{ "%.2f"|format(e.subtotal_amount) }} €{% else %}-{% endif %}</td>
-                            <td>{% if e.tax_amount %}{{ "%.2f"|format(e.tax_amount) }} €{% else %}-{% endif %}</td>
-                            <td>{{ "%.2f"|format(e.total_amount) }} €</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                {% else %}
-                <p class="text-muted mb-0">Sin gastos registrados.</p>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-    <div class="col-lg-6">
-        <div class="card mb-3">
-            <div class="card-header">Consumo por mes (año actual)</div>
-            <div class="card-body">
-                {% if fuel_by_month %}
-                <table class="table table-sm">
-                    <thead><tr><th>Mes</th><th>Litros</th><th>Base</th><th>IVA</th><th>Total</th></tr></thead>
-                    <tbody>
-                        {% for f in fuel_by_month %}
-                        <tr>
-                            <td>{{ f.month }}</td>
-                            <td>{{ "%.1f"|format(f.total_liters) }}</td>
-                            <td>{% if f.subtotal_amount %}{{ "%.2f"|format(f.subtotal_amount) }} €{% else %}-{% endif %}</td>
-                            <td>{% if f.tax_amount %}{{ "%.2f"|format(f.tax_amount) }} €{% else %}-{% endif %}</td>
-                            <td>{{ "%.2f"|format(f.total_amount) }} €</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                {% else %}
-                <p class="text-muted mb-0">Sin consumo registrado.</p>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="row">
-    <div class="col-lg-6">
-        <div class="card mb-3">
-            <div class="card-header">Últimas intervenciones (taller)</div>
-            <div class="card-body">
-                {% if workshop_expenses %}
-                <table class="table table-sm">
-                    <thead><tr><th>Fecha</th><th>Proveedor</th><th>Importe</th></tr></thead>
-                    <tbody>
-                        {% for w in workshop_expenses %}
-                        <tr>
-                            <td>{{ w.date|date_format }}</td>
-                            <td>{{ w.vendor or '-' }}</td>
-                            <td>{{ "%.2f"|format(w.total_amount) }} €</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                {% else %}
-                <p class="text-muted mb-0">Sin intervenciones registradas.</p>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-    <div class="col-lg-6">
-        <div class="card mb-3">
-            <div class="card-header">Últimos documentos</div>
-            <div class="card-body">
-                {% if recent_documents %}
-                <table class="table table-sm">
-                    <thead><tr><th>Fecha</th><th>Tipo</th><th>Estado</th><th></th></tr></thead>
-                    <tbody>
-                        {% for d in recent_documents %}
-                        <tr>
-                            <td>{{ d.uploaded_at|date_format }}</td>
-                            <td>{{ d.doc_type or '-' }}</td>
-                            <td>
-                                {% if d.status == 'processed' %}<span class="badge bg-success">Procesado</span>
-                                {% elif d.status == 'pending' %}<span class="badge bg-warning">Pendiente</span>
-                                {% else %}<span class="badge bg-danger">Error</span>{% endif %}
-                            </td>
-                            <td><a href="{{ url_for('web.document_detail', did=d.id) }}" class="btn btn-sm btn-outline-primary">Ver</a></td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                {% else %}
-                <p class="text-muted mb-0">Sin documentos registrados.</p>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-</div>
-
+{% block title %}{{ vehicle.plate }} - Gestión de Flotas{% endblock %}
+{% block extra_css %}
 <style>
-.vehicle-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-}
+  .dashboard-panel {
+    --bg: #0b0f14;
+    --stroke: rgba(255,255,255,.08);
+    --text: #e8eef7;
+    --muted: rgba(232,238,247,.7);
+    --muted-strong: rgba(232,238,247,.88);
+    --r: 16px;
+    --blue: #4da3ff;
+    --orange: #ffb257;
+    --green: #40d39c;
+    --red: #ff5c70;
+    --glow: 0 0 0 1px rgba(255,255,255,.06), 0 20px 50px rgba(0,0,0,.5);
+    --glowBlue: 0 0 0 1px rgba(77,163,255,.18), 0 0 30px rgba(77,163,255,.12);
+    --glowOrange: 0 0 0 1px rgba(255,178,87,.18), 0 0 30px rgba(255,178,87,.10);
+    --glowRed: 0 0 0 1px rgba(255,92,112,.25), 0 0 30px rgba(255,92,112,.18);
+    --glowGreen: 0 0 0 1px rgba(64,211,156,.18), 0 0 30px rgba(64,211,156,.10);
+    margin: -1.5rem; padding: 0; min-height: calc(100vh - 3rem);
+    background: radial-gradient(1200px 700px at 20% -10%, rgba(77,163,255,.18), transparent 60%),
+      radial-gradient(900px 550px at 100% 0%, rgba(180,140,255,.14), transparent 60%),
+      radial-gradient(900px 550px at 60% 120%, rgba(64,211,156,.10), transparent 60%), var(--bg);
+    color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+  }
+  .dashboard-panel .topbar { padding: 18px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--stroke); background: rgba(10,14,19,.30); backdrop-filter: blur(12px); flex-wrap: wrap; }
+  .dashboard-panel h1 { margin: 0; font-size: 22px; letter-spacing: .2px; }
+  .dashboard-panel .subtitle { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .dashboard-panel .topActions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+  .dashboard-panel .btn { border: 1px solid var(--stroke); background: rgba(255,255,255,.03); color: var(--text); padding: 10px 12px; border-radius: 14px; transition: .18s ease; font-weight: 750; display: inline-flex; align-items: center; gap: 8px; text-decoration: none; font-size: inherit; }
+  .dashboard-panel .btn:hover { background: rgba(255,255,255,.05); }
+  .dashboard-panel .btn.primary { border-color: rgba(77,163,255,.25); background: rgba(77,163,255,.12); box-shadow: var(--glowBlue); }
+  .dashboard-panel .btn.primary:hover { background: rgba(77,163,255,.16); }
+  .dashboard-panel .btn.small { padding: 8px 10px; border-radius: 12px; font-size: 13px; }
+  .dashboard-panel .content { padding: 18px 20px 22px; overflow: auto; }
+  .dashboard-panel .grid { display: grid; gap: 14px; }
+  .dashboard-panel .kpis { grid-template-columns: repeat(4, minmax(180px, 1fr)); }
+  .dashboard-panel .mainGrid { margin-top: 14px; grid-template-columns: 1.35fr .65fr; gap: 14px; align-items: start; }
+  .dashboard-panel .card { border-radius: var(--r); background: linear-gradient(180deg, rgba(255,255,255,.03), transparent 36%), rgba(15,23,36,.68); border: 1px solid var(--stroke); box-shadow: var(--glow); overflow: hidden; position: relative; }
+  .dashboard-panel .card.glow::before { content: ""; position: absolute; inset: -1px; background: radial-gradient(600px 180px at 30% 0%, rgba(77,163,255,.18), transparent 60%), radial-gradient(600px 180px at 70% 0%, rgba(180,140,255,.10), transparent 60%); pointer-events: none; opacity: .9; }
+  .dashboard-panel .card > * { position: relative; }
+  .dashboard-panel .cardHead { padding: 14px 14px 10px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .dashboard-panel .label { color: var(--muted-strong); font-size: 12px; }
+  .dashboard-panel .value { font-size: 26px; font-weight: 850; margin-top: 6px; color: var(--text); }
+  .dashboard-panel .muted { color: var(--muted-strong); font-size: 12.5px; padding: 0 14px 12px; }
+  .dashboard-panel .pill { font-size: 12px; font-weight: 800; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--stroke); background: rgba(255,255,255,.03); white-space: nowrap; }
+  .dashboard-panel .pill.blue { border-color: rgba(77,163,255,.25); background: rgba(77,163,255,.10); }
+  .dashboard-panel .pill.orange { border-color: rgba(255,178,87,.25); background: rgba(255,178,87,.10); }
+  .dashboard-panel .pill.green { border-color: rgba(64,211,156,.25); background: rgba(64,211,156,.10); }
+  .dashboard-panel .pill.red { border-color: rgba(255,92,112,.25); background: rgba(255,92,112,.10); }
+  .dashboard-panel .cardTop { padding: 14px; border-bottom: 1px solid var(--stroke); background: rgba(255,255,255,.01); }
+  .dashboard-panel .cardTop h2 { margin: 0; font-size: 15px; color: var(--text); }
+  .dashboard-panel .cardTop .muted { color: var(--muted-strong); padding: 0; }
+  .dashboard-panel .tableWrap { overflow: auto; }
+  .dashboard-panel .table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+  .dashboard-panel .table thead th { text-align: left; color: var(--muted-strong); font-weight: 900; padding: 12px 14px; border-bottom: 1px solid var(--stroke); background: rgba(15,23,36,.92); }
+  .dashboard-panel .table tbody tr, .dashboard-panel .table tbody td { background: transparent !important; }
+  .dashboard-panel .table tbody td { padding: 12px 14px; border-bottom: 1px solid rgba(255,255,255,.05); color: var(--text); vertical-align: middle; }
+  .dashboard-panel .table tbody tr:hover td { background: rgba(255,255,255,.06) !important; }
+  .dashboard-panel .table a { color: var(--blue); text-decoration: none; }
+  .dashboard-panel .table a:hover { text-decoration: underline; }
+  .dashboard-panel .right { text-align: right; }
+  .dashboard-panel .status { display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 999px; font-weight: 900; font-size: 12px; color: var(--text); }
+  .dashboard-panel .status.ok { border-color: rgba(64,211,156,.35); background: rgba(64,211,156,.18); color: #fff; }
+  .dashboard-panel .status.warn { border-color: rgba(255,178,87,.35); background: rgba(255,178,87,.18); color: #fff; }
+  .dashboard-panel .status.critical { border-color: rgba(255,92,112,.35); background: rgba(255,92,112,.2); color: #fff; }
+  .dashboard-panel .alerts { padding: 12px 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+  .dashboard-panel .alert { border-radius: 16px; border: 1px solid var(--stroke); background: rgba(255,255,255,.02); padding: 12px; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .dashboard-panel .alertLeft { display: flex; gap: 10px; }
+  .dashboard-panel .alert .badge { width: 38px; height: 38px; border-radius: 16px; display: grid; place-items: center; font-weight: 900; border: 1px solid var(--stroke); }
+  .dashboard-panel .alert .badge.red { border-color: rgba(255,92,112,.25); background: rgba(255,92,112,.10); }
+  .dashboard-panel .alert .badge.orange { border-color: rgba(255,178,87,.25); background: rgba(255,178,87,.10); }
+  .dashboard-panel .alert .badge.green { border-color: rgba(64,211,156,.25); background: rgba(64,211,156,.10); }
+  .dashboard-panel .alertTitle { font-weight: 900; margin: 0; font-size: 13px; }
+  .dashboard-panel .alertMeta { color: var(--muted-strong); font-size: 12px; margin-top: 3px; }
+  .dashboard-panel .tableEmpty { color: var(--muted-strong); font-size: 13px; padding: 1.5rem 14px; text-align: center; }
+  .dashboard-panel .tableEmpty a { color: var(--blue); }
+  .dashboard-panel .card.alertsCard { grid-row: span 2; display: flex; flex-direction: column; min-height: 0; }
+  .dashboard-panel .alertsCard .alerts { flex: 1; overflow-y: auto; min-height: 180px; }
+  @media (max-width: 1200px) { .dashboard-panel .kpis { grid-template-columns: repeat(2, minmax(180px, 1fr)); } .dashboard-panel .mainGrid { grid-template-columns: 1fr; } .dashboard-panel .card.alertsCard { grid-row: auto; } }
+  @media (max-width: 768px) { .dashboard-panel .topbar { flex-direction: column; align-items: stretch; } .dashboard-panel .kpis { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
 
+{% block content %}
+<div class="dashboard-panel">
+  <header class="topbar">
+    <div class="titleWrap">
+      <h1>
+        <a href="{{ url_for('web.vehicle_list') }}" style="color: var(--blue); text-decoration: none; margin-right: 8px;">←</a>
+        {{ vehicle.plate }}
+      </h1>
+      <p class="subtitle">
+        {% if vehicle.alias %}{{ vehicle.alias }}{% endif %}
+        {% if vehicle.brand or vehicle.model %}{% if vehicle.alias %} · {% endif %}{{ vehicle.brand or '' }} {{ vehicle.model or '' }}{% endif %}
+        {% if not vehicle.alias and not vehicle.brand and not vehicle.model %}Vehículo{% endif %}
+      </p>
+    </div>
+    <div class="topActions">
+      <a href="{{ url_for('web.vehicle_edit', vid=vehicle.id) }}" class="btn">Editar</a>
+      <a href="{{ url_for('web.document_upload') }}?vehicle_id={{ vehicle.id }}" class="btn primary">Subir documento</a>
+    </div>
+  </header>
+
+  <section class="content">
+    <div class="grid kpis">
+      <div class="card glow">
+        <div class="cardHead">
+          <div>
+            <div class="label">Consumo (mes)</div>
+            <div class="value">{{ "%.0f"|format(kpis_month.fuel_liters) }} L</div>
+          </div>
+          <div class="pill blue">Combustible</div>
+        </div>
+        <div class="muted">{{ "%.2f"|format(kpis_month.fuel_total) }} € en {{ month_label }}</div>
+      </div>
+      <div class="card glow">
+        <div class="cardHead">
+          <div>
+            <div class="label">Gastos (mes)</div>
+            <div class="value">{{ "%.2f"|format(kpis_month.expenses_total) }} €</div>
+          </div>
+          <div class="pill orange">Gastos</div>
+        </div>
+        <div class="muted">Base {{ "%.2f"|format(kpis_month.expenses_subtotal) }} € + IVA {{ "%.2f"|format(kpis_month.expenses_tax) }} € en {{ month_label }}</div>
+      </div>
+      <div class="card glow">
+        <div class="cardHead">
+          <div>
+            <div class="label">Consumo (año)</div>
+            <div class="value">{{ "%.0f"|format(kpis_year.fuel_liters) }} L</div>
+          </div>
+          <div class="pill green">Año</div>
+        </div>
+        <div class="muted">{{ "%.2f"|format(kpis_year.fuel_total) }} € en {{ year_label }}</div>
+      </div>
+      <div class="card glow">
+        <div class="cardHead">
+          <div>
+            <div class="label">Gastos (año)</div>
+            <div class="value">{{ "%.2f"|format(kpis_year.expenses_total) }} €</div>
+          </div>
+          <div class="pill red">Año</div>
+        </div>
+        <div class="muted">En {{ year_label }}</div>
+      </div>
+    </div>
+
+    {% if consumption_stats and consumption_stats.liters_per_100km %}
+    <div class="grid kpis" style="grid-template-columns: repeat(3, minmax(180px, 1fr)); margin-top: 14px;">
+      <div class="card glow">
+        <div class="cardHead">
+          <div>
+            <div class="label">L/100 km</div>
+            <div class="value">{{ "%.2f"|format(consumption_stats.liters_per_100km) }}</div>
+          </div>
+        </div>
+        <div class="muted">{{ consumption_stats.total_km }} km</div>
+      </div>
+      <div class="card glow">
+        <div class="cardHead">
+          <div>
+            <div class="label">Coste/km</div>
+            <div class="value">{{ "%.4f"|format(consumption_stats.cost_per_km) }} €</div>
+          </div>
+        </div>
+        <div class="muted">{{ "%.2f"|format(consumption_stats.total_cost) }} € total</div>
+      </div>
+      <div class="card glow">
+        <div class="cardHead">
+          <div>
+            <div class="label">Litros totales</div>
+            <div class="value">{{ "%.1f"|format(consumption_stats.total_liters) }} L</div>
+          </div>
+        </div>
+        <div class="muted">{{ consumption_stats.total_km }} km</div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="grid mainGrid">
+      <div class="card tableCard">
+        <div class="cardTop">
+          <h2>Información del vehículo</h2>
+          <a href="{{ url_for('web.vehicle_edit', vid=vehicle.id) }}" class="btn small">Editar</a>
+        </div>
+        <div class="tableWrap">
+          <table class="table">
+            <tbody>
+              <tr><td style="color: var(--muted-strong); font-weight: 700;">Matrícula</td><td>{{ vehicle.plate }}</td></tr>
+              {% if vehicle.alias %}<tr><td style="color: var(--muted-strong); font-weight: 700;">Alias</td><td>{{ vehicle.alias }}</td></tr>{% endif %}
+              {% if vehicle.brand %}<tr><td style="color: var(--muted-strong); font-weight: 700;">Marca</td><td>{{ vehicle.brand }}</td></tr>{% endif %}
+              {% if vehicle.model %}<tr><td style="color: var(--muted-strong); font-weight: 700;">Modelo</td><td>{{ vehicle.model }}</td></tr>{% endif %}
+              {% if vehicle.category %}<tr><td style="color: var(--muted-strong); font-weight: 700;">Categoría</td><td><span class="pill">{{ vehicle.category|title }}</span></td></tr>{% endif %}
+              <tr><td style="color: var(--muted-strong); font-weight: 700;">Estado</td><td><span class="status {% if vehicle.active %}ok{% else %}critical{% endif %}"><i></i>{% if vehicle.active %}Activo{% else %}Inactivo{% endif %}</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card alertsCard">
+        <div class="cardTop">
+          <h2>Vencimientos</h2>
+          <a href="{{ url_for('web.reminders_list') }}" class="btn small">Ver todos</a>
+        </div>
+        <div class="alerts">
+          {% for r in reminders %}
+          <div class="alert">
+            <div class="alertLeft">
+              <div class="badge {% if r.days_remaining <= 7 %}red{% elif r.days_remaining <= 30 %}orange{% else %}green{% endif %}">🗓</div>
+              <div>
+                <p class="alertTitle">{{ r.kind }}</p>
+                <div class="alertMeta">Vence {{ r.due_date }} · {{ r.days_remaining }} días</div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+          {% if not reminders %}
+          <p class="tableEmpty" style="margin: 0;">No hay vencimientos.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card tableCard">
+        <div class="cardTop">
+          <h2>Consumo por mes (año actual)</h2>
+        </div>
+        <div class="tableWrap">
+          <table class="table">
+            <thead><tr><th>Mes</th><th>Litros</th><th>Base</th><th>IVA</th><th>Total</th></tr></thead>
+            <tbody>
+              {% for f in fuel_by_month %}
+              <tr>
+                <td>{{ f.month }}</td>
+                <td>{{ "%.1f"|format(f.total_liters) }}</td>
+                <td>{% if f.subtotal_amount %}{{ "%.2f"|format(f.subtotal_amount) }} €{% else %}-{% endif %}</td>
+                <td>{% if f.tax_amount %}{{ "%.2f"|format(f.tax_amount) }} €{% else %}-{% endif %}</td>
+                <td>{{ "%.2f"|format(f.total_amount) }} €</td>
+              </tr>
+              {% endfor %}
+              {% if not fuel_by_month %}
+              <tr><td colspan="5" class="tableEmpty">Sin consumo registrado.</td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card tableCard">
+        <div class="cardTop">
+          <h2>Gastos por categoría (año actual)</h2>
+        </div>
+        <div class="tableWrap">
+          <table class="table">
+            <thead><tr><th>Categoría</th><th>Base</th><th>IVA</th><th>Total</th></tr></thead>
+            <tbody>
+              {% for e in expenses_by_category %}
+              <tr>
+                <td>{{ e.category }}</td>
+                <td>{% if e.subtotal_amount %}{{ "%.2f"|format(e.subtotal_amount) }} €{% else %}-{% endif %}</td>
+                <td>{% if e.tax_amount %}{{ "%.2f"|format(e.tax_amount) }} €{% else %}-{% endif %}</td>
+                <td>{{ "%.2f"|format(e.total_amount) }} €</td>
+              </tr>
+              {% endfor %}
+              {% if not expenses_by_category %}
+              <tr><td colspan="4" class="tableEmpty">Sin gastos.</td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card tableCard">
+        <div class="cardTop">
+          <h2>Últimos documentos</h2>
+          <a href="{{ url_for('web.document_upload') }}?vehicle_id={{ vehicle.id }}" class="btn small primary">Subir</a>
+        </div>
+        <div class="tableWrap">
+          <table class="table">
+            <thead><tr><th>Fecha</th><th>Tipo</th><th>Estado</th><th class="right"></th></tr></thead>
+            <tbody>
+              {% for d in recent_documents %}
+              <tr>
+                <td>{{ d.uploaded_at|date_format }}</td>
+                <td>{{ d.doc_type or '-' }}</td>
+                <td><span class="status {% if d.status == 'processed' %}ok{% elif d.status == 'pending' %}warn{% else %}critical{% endif %}"><i></i>{% if d.status == 'processed' %}Procesado{% elif d.status == 'pending' %}Pendiente{% else %}Error{% endif %}</span></td>
+                <td class="right"><a href="{{ url_for('web.document_detail', did=d.id) }}" class="btn small">Ver</a></td>
+              </tr>
+              {% endfor %}
+              {% if not recent_documents %}
+              <tr><td colspan="4" class="tableEmpty">Sin documentos. <a href="{{ url_for('web.document_upload') }}">Subir</a></td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card tableCard">
+        <div class="cardTop">
+          <h2>Últimas intervenciones (taller)</h2>
+        </div>
+        <div class="tableWrap">
+          <table class="table">
+            <thead><tr><th>Fecha</th><th>Proveedor</th><th class="right">Importe</th></tr></thead>
+            <tbody>
+              {% for w in workshop_expenses %}
+              <tr>
+                <td>{{ w.date|date_format }}</td>
+                <td>{{ w.vendor or '-' }}</td>
+                <td class="right">{{ "%.2f"|format(w.total_amount) }} €</td>
+              </tr>
+              {% endfor %}
+              {% if not workshop_expenses %}
+              <tr><td colspan="3" class="tableEmpty">Sin intervenciones.</td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

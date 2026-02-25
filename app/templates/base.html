@@ -9,6 +9,8 @@
     <style>
         :root { --sidebar-width: 220px; }
         .sidebar { min-height: 100vh; background: #1a1d23; }
+        .sidebar-logo-wrap { display: flex; justify-content: center; align-items: center; padding: 0.75rem 0.5rem; }
+        .sidebar-logo { height: 52px; width: auto; max-width: 200px; object-fit: contain; display: block; }
         .sidebar .nav-link { color: rgba(255,255,255,.8); padding: .6rem 1rem; }
         .sidebar .nav-link:hover { color: #fff; background: rgba(255,255,255,.1); }
         .sidebar .nav-link.active { color: #0d6efd; }
@@ -21,9 +23,8 @@
 </head>
 <body class="d-flex">
     <nav class="sidebar flex-shrink-0" style="width: var(--sidebar-width);">
-        <div class="p-3 text-white">
-            <i class="bi bi-truck me-2"></i>
-            <strong>Flotas</strong>
+        <div class="sidebar-logo-wrap text-white">
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="Flotas" class="sidebar-logo" />
         </div>
         <ul class="nav flex-column">
             <li class="nav-item">

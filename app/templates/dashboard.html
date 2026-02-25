@@ -1,162 +1,699 @@
 {% extends "base.html" %}
 {% block title %}Dashboard - Gestión de Flotas{% endblock %}
+
+{% block extra_css %}
+<style>
+  /* Panel dashboard – mismo formato que rrrr.html */
+  .dashboard-panel {
+    --bg: #0b0f14;
+    --panel: #0f1620;
+    --card: #0f1724;
+    --stroke: rgba(255,255,255,.08);
+    --text: #e8eef7;
+    --muted: rgba(232,238,247,.7);
+    --muted-strong: rgba(232,238,247,.88);
+    --shadow: 0 18px 40px rgba(0,0,0,.45);
+    --r: 16px;
+    --blue: #4da3ff;
+    --orange: #ffb257;
+    --green: #40d39c;
+    --red: #ff5c70;
+    --purple: #b48cff;
+    --glow: 0 0 0 1px rgba(255,255,255,.06), 0 20px 50px rgba(0,0,0,.5);
+    --glowBlue: 0 0 0 1px rgba(77,163,255,.18), 0 0 30px rgba(77,163,255,.12);
+    --glowOrange: 0 0 0 1px rgba(255,178,87,.18), 0 0 30px rgba(255,178,87,.10);
+    --glowRed: 0 0 0 1px rgba(255,92,112,.25), 0 0 30px rgba(255,92,112,.18);
+    --glowGreen: 0 0 0 1px rgba(64,211,156,.18), 0 0 30px rgba(64,211,156,.10);
+
+    margin: -1.5rem;
+    padding: 0;
+    min-height: calc(100vh - 3rem);
+    background:
+      radial-gradient(1200px 700px at 20% -10%, rgba(77,163,255,.18), transparent 60%),
+      radial-gradient(900px 550px at 100% 0%, rgba(180,140,255,.14), transparent 60%),
+      radial-gradient(900px 550px at 60% 120%, rgba(64,211,156,.10), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+  }
+
+  .dashboard-panel .topbar {
+    padding: 18px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    border-bottom: 1px solid var(--stroke);
+    background: rgba(10,14,19,.30);
+    backdrop-filter: blur(12px);
+    flex-wrap: wrap;
+  }
+  .dashboard-panel h1 { margin: 0; font-size: 22px; letter-spacing: .2px; }
+  .dashboard-panel .subtitle { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .dashboard-panel .topActions {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end;
+  }
+  .dashboard-panel .search {
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(255,255,255,.03);
+    border: 1px solid var(--stroke);
+    border-radius: 14px;
+    padding: 10px 12px;
+    min-width: 280px;
+  }
+  .dashboard-panel .search input {
+    flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); font-weight: 650;
+  }
+  .dashboard-panel .search kbd {
+    font-family: ui-monospace, monospace;
+    font-size: 12px; color: rgba(232,238,247,.75);
+    border: 1px solid var(--stroke); background: rgba(255,255,255,.02);
+    padding: 2px 6px; border-radius: 8px;
+  }
+  .dashboard-panel .btn {
+    border: 1px solid var(--stroke);
+    background: rgba(255,255,255,.03);
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: 14px;
+    cursor: pointer;
+    transition: .18s ease;
+    font-weight: 750;
+    letter-spacing: .15px;
+    display: inline-flex; align-items: center; gap: 8px;
+    text-decoration: none;
+    font-size: inherit;
+  }
+  .dashboard-panel .btn:hover { background: rgba(255,255,255,.05); }
+  .dashboard-panel .btn.primary {
+    border-color: rgba(77,163,255,.25);
+    background: rgba(77,163,255,.12);
+    box-shadow: var(--glowBlue);
+  }
+  .dashboard-panel .btn.primary:hover { background: rgba(77,163,255,.16); }
+  .dashboard-panel .btn.small { padding: 8px 10px; border-radius: 12px; font-size: 13px; }
+  .dashboard-panel .btnIcon { font-size: 18px; line-height: 0; }
+
+  .dashboard-panel .content {
+    padding: 18px 20px 22px;
+    overflow: auto;
+  }
+  .dashboard-panel .grid { display: grid; gap: 14px; }
+  .dashboard-panel .kpis { grid-template-columns: repeat(2, minmax(200px, 1fr)); }
+  .dashboard-panel .mainGrid {
+    margin-top: 14px;
+    grid-template-columns: 1.35fr .65fr;
+    grid-template-rows: auto auto auto;
+    grid-auto-rows: minmax(120px, auto);
+    align-items: start;
+    gap: 14px;
+  }
+  .dashboard-panel .card.alertsCard {
+    grid-row: span 2;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .dashboard-panel .alertsCard .alerts {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 200px;
+  }
+
+  .dashboard-panel .card {
+    border-radius: var(--r);
+    background: linear-gradient(180deg, rgba(255,255,255,.03), transparent 36%),
+                rgba(15,23,36,.68);
+    border: 1px solid var(--stroke);
+    box-shadow: var(--glow);
+    overflow: hidden;
+    position: relative;
+  }
+  .dashboard-panel .card.glow::before {
+    content: "";
+    position: absolute; inset: -1px;
+    background: radial-gradient(600px 180px at 30% 0%, rgba(77,163,255,.18), transparent 60%),
+                radial-gradient(600px 180px at 70% 0%, rgba(180,140,255,.10), transparent 60%);
+    pointer-events: none;
+    opacity: .9;
+  }
+  .dashboard-panel .card > * { position: relative; }
+  .dashboard-panel .cardHead {
+    padding: 14px 14px 10px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .dashboard-panel .label { color: var(--muted-strong); font-size: 12px; letter-spacing: .2px; }
+  .dashboard-panel .value { font-size: 26px; font-weight: 850; margin-top: 6px; color: var(--text); }
+  .dashboard-panel .muted { color: var(--muted-strong); font-size: 12.5px; padding: 0 14px 12px; }
+  .dashboard-panel .pill {
+    font-size: 12px; font-weight: 800; padding: 6px 10px; border-radius: 999px;
+    border: 1px solid var(--stroke); background: rgba(255,255,255,.03); white-space: nowrap;
+  }
+  .dashboard-panel .pill.blue { border-color: rgba(77,163,255,.25); background: rgba(77,163,255,.10); }
+  .dashboard-panel .pill.orange { border-color: rgba(255,178,87,.25); background: rgba(255,178,87,.10); }
+  .dashboard-panel .pill.green { border-color: rgba(64,211,156,.25); background: rgba(64,211,156,.10); }
+  .dashboard-panel .pill.red { border-color: rgba(255,92,112,.25); background: rgba(255,92,112,.10); }
+
+  .dashboard-panel .cardTop {
+    padding: 14px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 1px solid var(--stroke);
+    background: rgba(255,255,255,.01);
+    flex-wrap: wrap;
+  }
+  .dashboard-panel .cardTop .muted { color: var(--muted-strong); }
+  .dashboard-panel .cardTop h2 { margin: 0; font-size: 15px; letter-spacing: .2px; color: var(--text); }
+  .dashboard-panel .chipRow { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+  .dashboard-panel .chip {
+    border: 1px solid var(--stroke);
+    background: rgba(255,255,255,.02);
+    color: rgba(232,238,247,.86);
+    padding: 7px 10px;
+    border-radius: 999px;
+    cursor: pointer;
+    font-weight: 800;
+    font-size: 12px;
+    transition: .18s ease;
+  }
+  .dashboard-panel .chip:hover { background: rgba(255,255,255,.04); }
+  .dashboard-panel .chip.active {
+    border-color: rgba(180,140,255,.24);
+    background: rgba(180,140,255,.12);
+    box-shadow: 0 0 0 1px rgba(180,140,255,.08), 0 0 22px rgba(180,140,255,.10);
+  }
+
+  .dashboard-panel .tableWrap { overflow: auto; }
+  .dashboard-panel .table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 13px;
+  }
+  .dashboard-panel .table thead th {
+    text-align: left;
+    color: var(--muted-strong);
+    font-weight: 900;
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--stroke);
+    position: sticky;
+    top: 0;
+    background: rgba(15,23,36,.92);
+    backdrop-filter: blur(10px);
+    z-index: 1;
+  }
+  .dashboard-panel .table tbody tr,
+  .dashboard-panel .table tbody td {
+    background: transparent !important;
+  }
+  .dashboard-panel .table tbody td {
+    padding: 12px 14px;
+    border-bottom: 1px solid rgba(255,255,255,.05);
+    color: var(--text);
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+  .dashboard-panel .table tbody td strong { color: var(--text); }
+  .dashboard-panel .table tbody td .tableCellSecondary {
+    color: var(--muted-strong);
+    font-size: 12px;
+    margin-top: 2px;
+  }
+  .dashboard-panel .table tbody tr:hover td { background: rgba(255,255,255,.06) !important; }
+  .dashboard-panel .table tbody tr.vehicle-row-link { cursor: pointer; }
+  .dashboard-panel .table a { color: var(--blue); text-decoration: none; }
+  .dashboard-panel .table a:hover { text-decoration: underline; }
+  .dashboard-panel .right { text-align: right; }
+  .dashboard-panel .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--stroke);
+    background: rgba(255,255,255,.02);
+    font-weight: 900;
+    font-size: 12px;
+    color: var(--text);
+  }
+  .dashboard-panel .status i { width: 8px; height: 8px; border-radius: 999px; background: rgba(255,255,255,.25); }
+  .dashboard-panel .status.ok { border-color: rgba(64,211,156,.35); background: rgba(64,211,156,.18); color: #fff; }
+  .dashboard-panel .status.ok i { background: var(--green); }
+  .dashboard-panel .status.warn { border-color: rgba(255,178,87,.35); background: rgba(255,178,87,.18); color: #fff; }
+  .dashboard-panel .status.warn i { background: var(--orange); }
+  .dashboard-panel .status.critical { border-color: rgba(255,92,112,.35); background: rgba(255,92,112,.2); color: #fff; }
+  .dashboard-panel .status.critical i { background: var(--red); }
+
+  .dashboard-panel .rowActions { display: flex; justify-content: flex-end; gap: 8px; }
+  .dashboard-panel .iconBtn {
+    width: 34px; height: 34px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,.12);
+    background: rgba(0,0,0,.35);
+    color: #fff;
+    cursor: pointer;
+    transition: .18s ease;
+    display: inline-grid;
+    place-items: center;
+    font-weight: 900;
+    text-decoration: none;
+    font-size: 14px;
+  }
+  .dashboard-panel .iconBtn:hover { background: rgba(255,255,255,.08); color: #fff; }
+  .dashboard-panel .iconBtn:disabled {
+    opacity: .7;
+    cursor: not-allowed;
+    background: rgba(0,0,0,.25);
+    color: rgba(255,255,255,.85);
+  }
+  .dashboard-panel .iconBtn.danger {
+    border-color: rgba(255,92,112,.4);
+    background: rgba(255,92,112,.2);
+    color: #fff;
+  }
+  .dashboard-panel .iconBtn.danger:hover { box-shadow: var(--glowRed); background: rgba(255,92,112,.28); color: #fff; }
+  .dashboard-panel .iconBtn.danger:disabled { background: rgba(255,92,112,.15); color: rgba(255,255,255,.9); }
+
+  .dashboard-panel .alerts {
+    padding: 12px 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .dashboard-panel .alert {
+    border-radius: 16px;
+    border: 1px solid var(--stroke);
+    background: rgba(255,255,255,.02);
+    padding: 12px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .dashboard-panel .alertLeft { display: flex; gap: 10px; }
+  .dashboard-panel .alert .badge {
+    width: 38px; height: 38px; border-radius: 16px;
+    display: grid; place-items: center;
+    border: 1px solid var(--stroke);
+    background: rgba(255,255,255,.03);
+    font-weight: 900;
+  }
+  .dashboard-panel .alert .badge.red { border-color: rgba(255,92,112,.25); background: rgba(255,92,112,.10); }
+  .dashboard-panel .alert .badge.orange { border-color: rgba(255,178,87,.25); background: rgba(255,178,87,.10); }
+  .dashboard-panel .alert .badge.green { border-color: rgba(64,211,156,.25); background: rgba(64,211,156,.10); }
+  .dashboard-panel .alertTitle { font-weight: 900; margin: 0; font-size: 13px; }
+  .dashboard-panel .alertMeta { color: var(--muted-strong); font-size: 12px; margin-top: 3px; }
+  .dashboard-panel .alertRight { display: flex; gap: 8px; align-items: center; }
+
+  .dashboard-panel .chartCard .chart { padding: 12px 12px 16px; }
+  .dashboard-panel .legend { display: flex; gap: 12px; align-items: center; color: var(--muted-strong); font-size: 12px; font-weight: 800; }
+  .dashboard-panel .lgItem { display: flex; gap: 8px; align-items: center; }
+  .dashboard-panel .lgDot {
+    width: 10px; height: 10px; border-radius: 999px;
+    background: rgba(77,163,255,.90);
+    box-shadow: 0 0 0 3px rgba(77,163,255,.16);
+  }
+  .dashboard-panel .lgDot.alt {
+    background: rgba(255,178,87,.90);
+    box-shadow: 0 0 0 3px rgba(255,178,87,.16);
+  }
+  .dashboard-panel .chartEmpty {
+    color: var(--muted-strong);
+    font-size: 13px;
+    padding: 2rem;
+    text-align: center;
+  }
+
+  .dashboard-panel .tableEmpty {
+    color: var(--muted-strong);
+    font-size: 13px;
+    padding: 1.5rem 14px;
+    text-align: center;
+  }
+  .dashboard-panel .tableEmpty a { color: var(--blue); }
+  .dashboard-panel .vehicle-next-due {
+    white-space: normal;
+    max-width: 200px;
+  }
+  .dashboard-panel .vehicle-next-due .status { white-space: nowrap; }
+
+  @media (max-width: 1200px) {
+    .dashboard-panel .kpis { grid-template-columns: repeat(2, minmax(200px, 1fr)); }
+    .dashboard-panel .mainGrid { grid-template-columns: 1fr; }
+    .dashboard-panel .card.alertsCard { grid-row: auto; }
+    .dashboard-panel .search { min-width: 240px; }
+  }
+  .dashboard-panel .dateFilterBar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--stroke);
+    background: rgba(10,14,19,.25);
+    flex-wrap: wrap;
+  }
+  .dashboard-panel .dateFilterBar label {
+    color: var(--muted-strong);
+    font-size: 13px;
+    font-weight: 700;
+    margin-right: 4px;
+  }
+  .dashboard-panel .dateFilterBar select {
+    padding: 8px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--stroke);
+    background: rgba(0,0,0,.35);
+    color: var(--text);
+    font-weight: 650;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .dashboard-panel .dateFilterBar select:hover,
+  .dashboard-panel .dateFilterBar select:focus {
+    border-color: rgba(77,163,255,.3);
+    outline: none;
+  }
+  .dashboard-panel .dateFilterBar .periodToggle {
+    display: flex;
+    gap: 0;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--stroke);
+    background: rgba(0,0,0,.2);
+  }
+  .dashboard-panel .dateFilterBar .periodToggle input { display: none; }
+  .dashboard-panel .dateFilterBar .periodToggle label {
+    margin: 0;
+    padding: 8px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--muted-strong);
+    transition: all .18s ease;
+  }
+  .dashboard-panel .dateFilterBar .periodToggle input:checked + label {
+    background: rgba(77,163,255,.2);
+    color: var(--text);
+    border-color: rgba(77,163,255,.3);
+  }
+  .dashboard-panel .dateFilterBar .monthYearWrap { display: flex; align-items: center; gap: 8px; }
+  .dashboard-panel .dateFilterBar .monthYearWrap.hide-month { display: none !important; }
+  @media (max-width: 768px) {
+    .dashboard-panel .topbar { flex-direction: column; align-items: stretch; }
+    .dashboard-panel .topActions { justify-content: stretch; }
+    .dashboard-panel .search { min-width: 100%; }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<h1 class="h3 mb-4">Dashboard</h1>
+<div class="dashboard-panel">
+  <header class="topbar">
+    <div class="titleWrap">
+      <h1>Dashboard</h1>
+      <p class="subtitle">Resumen de consumos, gastos y vencimientos.</p>
+    </div>
+    <div class="topActions">
+      <div class="search">
+        <input type="text" placeholder="Buscar vehículo, matrícula..." disabled aria-label="Búsqueda (próximamente)" />
+        <kbd>⌘K</kbd>
+      </div>
+      <a href="{{ url_for('web.vehicle_create') }}" class="btn primary">
+        <span class="btnIcon">＋</span> Añadir vehículo
+      </a>
+      <a href="{{ url_for('web.document_upload') }}" class="btn">Subir documento</a>
+      <a href="{{ url_for('web.reports') }}" class="btn">Ver reportes</a>
+      <button type="button" class="btn" disabled title="Próximamente">Exportar CSV</button>
+    </div>
+  </header>
 
-<div class="row g-3 mb-4">
-    <div class="col-md-3">
-        <div class="card kpi-card h-100">
-            <div class="card-body">
-                <div class="text-muted small">Vehículos activos</div>
-                <h3 class="mb-0">{{ kpis.total_vehicles }}</h3>
-            </div>
-        </div>
+  <form method="get" action="{{ url_for('web.index') }}" class="dateFilterBar" id="dashboardDateFilter">
+    <div class="periodToggle">
+      <input type="radio" name="period" value="month" id="periodMonth" {% if date_filter.period == 'month' %}checked{% endif %}>
+      <label for="periodMonth">Por mes</label>
+      <input type="radio" name="period" value="year" id="periodYear" {% if date_filter.period == 'year' %}checked{% endif %}>
+      <label for="periodYear">Anual</label>
     </div>
-    <div class="col-md-3">
-        <div class="card kpi-card h-100">
-            <div class="card-body">
-                <div class="text-muted small">Combustible (este mes)</div>
-                <h3 class="mb-0">{{ "%.1f"|format(kpis.fuel_liters_month) }} L</h3>
-                <small class="text-muted">{{ "%.2f"|format(kpis.fuel_amount_month) }} €</small>
-            </div>
-        </div>
+    <div class="monthYearWrap {% if date_filter.period == 'year' %}hide-month{% endif %}" id="monthYearWrap">
+      <label for="filterMonth">Mes</label>
+      <select name="month" id="filterMonth">
+        {% for m in range(1, 13) %}
+        <option value="{{ m }}" {% if date_filter.month == m %}selected{% endif %}>{{ ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][m-1] }}</option>
+        {% endfor %}
+      </select>
     </div>
-    <div class="col-md-3">
-        <div class="card kpi-card h-100">
-            <div class="card-body">
-                <div class="text-muted small">Gastos (este mes)</div>
-                <h3 class="mb-0">{{ "%.2f"|format(kpis.expenses_amount_month) }} €</h3>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-3">
-        <div class="card kpi-card h-100">
-            <div class="card-body">
-                <div class="text-muted small">Vencimientos 30 días</div>
-                <h3 class="mb-0 {% if kpis.count_reminders_30 > 0 %}text-warning{% endif %}">{{ kpis.count_reminders_30 }}</h3>
-                {% if kpis.pending_docs > 0 %}
-                <small class="text-muted">{{ kpis.pending_docs }} doc(s) pendientes</small>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-</div>
+    <label for="filterYear">Año</label>
+    <select name="year" id="filterYear">
+      {% for y in range(2020, 2031) %}
+      <option value="{{ y }}" {% if date_filter.year == y %}selected{% endif %}>{{ y }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="btn primary btn small">Filtrar</button>
+  </form>
 
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">Vehículos</h5>
-            </div>
-            <div class="card-body">
-                <div class="row g-3">
-                    {% for item in vehicles_with_kpis %}
-                    {% set vehicle = item.vehicle %}
-                    {% set vehicle_kpis = item.kpis %}
-                    <div class="col-md-6 col-lg-4 col-xl-3">
-                        <a href="{{ url_for('web.vehicle_detail', vid=vehicle.id) }}" class="text-decoration-none">
-                            <div class="card h-100 vehicle-card" style="cursor: pointer; transition: transform 0.2s;">
-                                <div class="card-body">
-                                    <div class="d-flex justify-content-between align-items-start mb-2">
-                                        <h6 class="card-title mb-0">{{ vehicle.plate }}</h6>
-                                        {% if vehicle.category %}
-                                        <span class="badge bg-info">{{ vehicle.category|title }}</span>
-                                        {% endif %}
-                                    </div>
-                                    {% if vehicle.alias %}
-                                    <p class="text-muted small mb-1">{{ vehicle.alias }}</p>
-                                    {% endif %}
-                                    {% if vehicle.brand or vehicle.model %}
-                                    <p class="text-muted small mb-2">{{ vehicle.brand or '' }} {{ vehicle.model or '' }}</p>
-                                    {% endif %}
-                                    <div class="small">
-                                        {% set fuel_liters = vehicle_kpis.fuel_liters_month or 0 %}
-                                        {% set fuel_subtotal = vehicle_kpis.fuel_subtotal_month or 0 %}
-                                        {% set expenses = vehicle_kpis.expenses_amount_month or 0 %}
-                                        {% set total_expenses = fuel_subtotal + expenses %}
-                                        {% set is_current_month = vehicle_kpis.is_current_month_data if vehicle_kpis.is_current_month_data is defined else True %}
-                                        <div class="text-muted">
-                                            Combustible {% if not is_current_month %}<span class="text-muted" style="font-size: 0.85em;">(últimos 90 días)</span>{% else %}mes{% endif %}: 
-                                            <strong>{{ "%.1f"|format(fuel_liters) }} L</strong>
-                                        </div>
-                                        {% if fuel_subtotal > 0 %}
-                                        <div class="text-muted">Gasto gasoil (sin IVA): <strong>{{ "%.2f"|format(fuel_subtotal) }} €</strong></div>
-                                        {% endif %}
-                                        {% if expenses > 0 %}
-                                        <div class="text-muted">Otros gastos: <strong>{{ "%.2f"|format(expenses) }} €</strong></div>
-                                        {% endif %}
-                                        {% if total_expenses > 0 %}
-                                        <div class="text-muted mt-1"><strong>Total gastos: {{ "%.2f"|format(total_expenses) }} €</strong></div>
-                                        {% endif %}
-                                        {% if vehicle_kpis.count_reminders_30 > 0 %}
-                                        <div class="text-warning mt-1">
-                                            <i class="bi bi-exclamation-triangle"></i> {{ vehicle_kpis.count_reminders_30 }} vencimiento(s)
-                                        </div>
-                                        {% endif %}
-                                    </div>
-                                </div>
-                            </div>
-                        </a>
-                    </div>
-                    {% endfor %}
-                    {% if not vehicles_with_kpis %}
-                    <div class="col-12">
-                        <p class="text-muted text-center">No hay vehículos activos. <a href="{{ url_for('web.vehicle_create') }}">Crea uno</a></p>
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
+  <section class="content">
+    <div class="grid kpis">
+      <div class="card glow">
+        <div class="cardHead">
+          <div>
+            <div class="label">Consumo (mes)</div>
+            <div class="value">{{ "%.0f"|format(kpis.fuel_liters_month) }} L</div>
+          </div>
+          <div class="pill blue">Combustible</div>
         </div>
-    </div>
-</div>
+        <div class="muted">{{ "%.2f"|format(kpis.fuel_amount_month) }} € en {{ date_filter.period_label }}</div>
+      </div>
 
-<div class="row">
-    <div class="col-lg-8">
-        <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <span>Próximos vencimientos</span>
-                <a href="{{ url_for('web.reminders_list') }}" class="btn btn-sm btn-outline-primary">Ver todos</a>
-            </div>
-            <div class="card-body">
-                {% if reminders %}
-                <table class="table table-sm">
-                    <thead><tr><th>Vehículo</th><th>Tipo</th><th>Vencimiento</th><th>Días</th></tr></thead>
-                    <tbody>
-                        {% for r in reminders %}
-                        <tr>
-                            <td>{{ r.vehicle_plate }}</td>
-                            <td>{{ r.kind }}</td>
-                            <td>{{ r.due_date|date_format }}</td>
-                            <td>
-                                <span class="badge {% if r.days_remaining <= 7 %}bg-danger{% elif r.days_remaining <= 30 %}bg-warning{% else %}bg-secondary{% endif %}">
-                                    {{ r.days_remaining }} días
-                                </span>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                {% else %}
-                <p class="text-muted mb-0">No hay vencimientos próximos.</p>
-                {% endif %}
-            </div>
+      <div class="card glow">
+        <div class="cardHead">
+          <div>
+            <div class="label">Gastos</div>
+            <div class="value">{{ "%.2f"|format(kpis.expenses_amount_month) }} €</div>
+          </div>
+          <div class="pill orange">Gastos</div>
         </div>
+        <div class="muted">Otros gastos en {{ date_filter.period_label }}</div>
+      </div>
     </div>
-    <div class="col-lg-4">
-        <div class="card">
-            <div class="card-header">Acciones rápidas</div>
-            <div class="card-body">
-                <a href="{{ url_for('web.vehicle_create') }}" class="btn btn-outline-primary d-block mb-2">
-                    <i class="bi bi-plus-circle me-1"></i> Nuevo vehículo
-                </a>
-                <a href="{{ url_for('web.document_upload') }}" class="btn btn-outline-primary d-block mb-2">
-                    <i class="bi bi-upload me-1"></i> Subir documento
-                </a>
-                <a href="{{ url_for('web.reports') }}" class="btn btn-outline-primary d-block">
-                    <i class="bi bi-file-earmark-spreadsheet me-1"></i> Ver reportes
-                </a>
-            </div>
+
+    <div class="grid mainGrid">
+      <div class="card tableCard">
+        <div class="cardTop">
+          <div>
+            <h2>Vehículos</h2>
+            <p class="muted">Estado, consumo y próximos vencimientos</p>
+          </div>
+          <div class="chipRow">
+            <span class="chip active">Todos</span>
+            <span class="chip">OK</span>
+            <span class="chip">Aviso</span>
+            <span class="chip">Crítico</span>
+          </div>
         </div>
+        <div class="tableWrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Matrícula</th>
+                <th>Estado</th>
+                <th>Consumo</th>
+                <th>L/100 km</th>
+                <th>€/km gasoil</th>
+                <th>€/km gasoil+taller</th>
+                <th>Gasoil</th>
+                <th>Taller</th>
+                <th>Próximo vencimiento</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in vehicles_with_kpis %}
+              {% set v = item.vehicle %}
+              {% set vk = item.kpis %}
+              {% set cs = item.consumption_stats or {} %}
+              {% set nr = item.next_reminder %}
+              {% set rem = vk.count_reminders_30 or 0 %}
+              {% set sev = 'warn' if rem > 0 else 'ok' %}
+              <tr class="vehicle-row-link" data-href="{{ url_for('web.vehicle_detail', vid=v.id) }}" role="button" tabindex="0" title="Ver ficha del vehículo">
+                <td><strong>{{ v.plate }}</strong></td>
+                <td><span class="status {{ sev }}"><i></i>{% if sev == 'warn' %}Aviso{% else %}OK{% endif %}</span></td>
+                <td>{{ "%.1f"|format(vk.fuel_liters_month or 0) }} L</td>
+                <td>{% if cs.liters_per_100km is not none %}{{ "%.2f"|format(cs.liters_per_100km) }}{% else %}—{% endif %}</td>
+                <td>{% if cs.cost_per_km is not none %}{{ "%.4f"|format(cs.cost_per_km) }} €{% else %}—{% endif %}</td>
+                <td>{% if item.cost_per_km_with_workshop is not none %}{{ "%.4f"|format(item.cost_per_km_with_workshop) }} €{% else %}—{% endif %}</td>
+                <td>{{ "%.2f"|format(vk.fuel_amount_month or 0) }} €</td>
+                <td>{{ "%.2f"|format(item.workshop_amount or 0) }} €</td>
+                <td class="vehicle-next-due">
+                  {% if nr %}
+                  <span class="status {% if nr.days_remaining <= 7 %}critical{% elif nr.days_remaining <= 30 %}warn{% else %}ok{% endif %}"><i></i>{{ nr.kind }} {{ nr.due_date }} ({{ nr.days_remaining }} d)</span>
+                  {% else %}
+                  —
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+              {% if not vehicles_with_kpis %}
+              <tr><td colspan="9" class="tableEmpty">No hay vehículos activos. <a href="{{ url_for('web.vehicle_create') }}">Crear uno</a></td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card alertsCard">
+        <div class="cardTop">
+          <div>
+            <h2>Alertas & vencimientos</h2>
+            <p class="muted">Lo más urgente primero</p>
+          </div>
+          <button type="button" class="btn small" disabled title="Próximamente">Nueva tarea</button>
+        </div>
+        <div class="alerts">
+          {% for r in reminders[:8] %}
+          <div class="alert">
+            <div class="alertLeft">
+              <div class="badge {% if r.days_remaining <= 7 %}red{% elif r.days_remaining <= 30 %}orange{% else %}green{% endif %}">🗓</div>
+              <div>
+                <p class="alertTitle">{{ r.kind }} • {{ r.vehicle_plate }}</p>
+                <div class="alertMeta">Vence {{ r.due_date }} • {{ r.days_remaining }} días</div>
+              </div>
+            </div>
+            <div class="alertRight">
+              <button type="button" class="iconBtn" title="Próximamente" disabled>✓</button>
+              <button type="button" class="iconBtn danger" title="Próximamente" disabled>🗑</button>
+            </div>
+          </div>
+          {% endfor %}
+          {% if not reminders %}
+          <p class="chartEmpty" style="padding: 12px 14px; margin: 0;">No hay alertas próximas.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card chartCard">
+        <div class="cardTop">
+          <div>
+            <h2>Consumo & coste (12 semanas)</h2>
+            <p class="muted">Comparativa litros vs €</p>
+          </div>
+          <div class="legend">
+            <span class="lgItem"><i class="lgDot"></i> Litros</span>
+            <span class="lgItem"><i class="lgDot alt"></i> €</span>
+          </div>
+        </div>
+        <div class="chart">
+          <p class="chartEmpty">Sin datos de serie temporal (próximamente).</p>
+        </div>
+      </div>
+
+      <div class="card tableCard">
+        <div class="cardTop">
+          <div>
+            <h2>Vencimientos</h2>
+            <p class="muted">ITV, seguro, revisión, tacógrafo…</p>
+          </div>
+          <a href="{{ url_for('web.reminders_list') }}" class="btn small">Ver todos</a>
+          <button type="button" class="btn small" disabled title="Próximamente">Añadir vencimiento</button>
+        </div>
+        <div class="tableWrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Tipo</th>
+                <th>Vehículo</th>
+                <th>Fecha</th>
+                <th>Días</th>
+                <th>Estado</th>
+                <th class="right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in reminders %}
+              <tr>
+                <td><strong>{{ r.kind }}</strong></td>
+                <td>{{ r.vehicle_plate }}</td>
+                <td>{{ r.due_date }}</td>
+                <td>{{ r.days_remaining }} días</td>
+                <td>
+                  <span class="status {% if r.days_remaining <= 7 %}critical{% elif r.days_remaining <= 30 %}warn{% else %}ok{% endif %}">
+                    <i></i>{% if r.days_remaining <= 7 %}Crítico{% elif r.days_remaining <= 30 %}Aviso{% else %}OK{% endif %}
+                  </span>
+                </td>
+                <td class="right">
+                  <div class="rowActions">
+                    <a href="{{ url_for('web.reminders_list') }}" class="iconBtn" title="Ver vencimientos">▦</a>
+                    <button type="button" class="iconBtn" title="Próximamente" disabled>✓</button>
+                    <button type="button" class="iconBtn danger" title="Próximamente" disabled>🗑</button>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+              {% if not reminders %}
+              <tr><td colspan="6" class="tableEmpty">No hay vencimientos. <a href="{{ url_for('web.reminders_list') }}">Ver lista</a></td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card tableCard">
+        <div class="cardTop">
+          <div>
+            <h2>Últimas entradas de taller</h2>
+            <p class="muted">Facturas, reparaciones y revisiones</p>
+          </div>
+          <button type="button" class="btn small" disabled title="Próximamente">Registrar gasto</button>
+        </div>
+        <div class="tableWrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Vehículo</th>
+                <th>Concepto</th>
+                <th class="right">Importe</th>
+                <th class="right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td colspan="5" class="tableEmpty">Sin entradas de taller (próximamente).</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
+  </section>
 </div>
+<script>
+(function() {
+  var form = document.getElementById('dashboardDateFilter');
+  var periodYear = document.getElementById('periodYear');
+  var monthYearWrap = document.getElementById('monthYearWrap');
+  if (form && periodYear && monthYearWrap) {
+    function toggleMonth() {
+      monthYearWrap.classList.toggle('hide-month', periodYear.checked);
+    }
+    periodYear.addEventListener('change', toggleMonth);
+    document.getElementById('periodMonth').addEventListener('change', toggleMonth);
+  }
+
+  document.querySelectorAll('.dashboard-panel .table tbody tr.vehicle-row-link').forEach(function(row) {
+    row.addEventListener('click', function(e) {
+      if (e.target.closest('a, button')) return;
+      var href = row.getAttribute('data-href');
+      if (href) window.location.href = href;
+    });
+    row.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        var href = row.getAttribute('data-href');
+        if (href) window.location.href = href;
+      }
+    });
+  });
+})();
+</script>
 {% endblock %}

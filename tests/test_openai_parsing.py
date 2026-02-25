@@ -13,7 +13,7 @@ def test_normalize_response_full():
         "date_due": None,
         "amounts": {"total": 45.99, "currency": "EUR"},
         "fuel": {"liters": 50, "price_per_liter": 1.45},
-        "odometer_km": 125000,
+        "kilometers": 125000,
         "confidence": 0.9,
     }
     result = _normalize_response(data)

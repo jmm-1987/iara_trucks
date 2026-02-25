@@ -1,6 +1,7 @@
 """
 Rutas web - Panel de gestión de flotas.
 """
+import calendar
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -17,15 +18,25 @@ from flask import (
     url_for,
 )
 from werkzeug.utils import secure_filename
+from sqlalchemy import func
+
+from decimal import Decimal
 
 from app.models import (
     Document,
     DocumentStatus,
+    DocumentType,
+    ExpenseCategory,
+    ExpenseEntry,
+    FuelEntry,
+    Reminder,
+    ReminderKind,
     Vehicle,
     db,
 )
 from app.services.document_processor import process_document
 from app.services.reporting_service import (
+    calculate_fuel_consumption_stats,
     dashboard_kpis,
     expenses_by_category,
     export_csv_report,
@@ -55,39 +66,111 @@ def allowed_file(filename: str, allowed: set) -> bool:
     return ext in allowed
 
 
+def _dashboard_period_from_request():
+    """Calcula period_start y period_end desde request (period=month|year, year, month)."""
+    today = date.today()
+    period_type = (request.args.get("period") or "year").strip().lower()
+    if period_type not in ("month", "year"):
+        period_type = "year"
+
+    year = request.args.get("year", type=int) or today.year
+    month = request.args.get("month", type=int) or today.month
+
+    month_names = ("", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic")
+    if period_type == "year":
+        year = max(2000, min(2100, year))
+        period_start = date(year, 1, 1)
+        period_end = date(year, 12, 31)
+        period_label = str(year)
+    else:
+        year = max(2000, min(2100, year))
+        month = max(1, min(12, month))
+        period_start = date(year, month, 1)
+        _, last_day = calendar.monthrange(year, month)
+        period_end = date(year, month, last_day)
+        period_label = f"{month_names[month]} {year}"
+
+    return {
+        "period": period_type,
+        "year": year,
+        "month": month,
+        "period_start": period_start,
+        "period_end": period_end,
+        "period_label": period_label,
+    }
+
+
 @web_bp.route("/")
 def index():
     """Dashboard principal."""
     import logging
     logger = logging.getLogger(__name__)
-    
+
     vehicle_id = request.args.get("vehicle_id", type=int)
-    kpis = dashboard_kpis(vehicle_id)
-    reminders = upcoming_due_dates(30)
-    if vehicle_id:
-        reminders = [r for r in reminders if r["vehicle_id"] == vehicle_id]
-    
-    # Obtener vehículos con sus KPIs
+    date_filter = _dashboard_period_from_request()
+    period_start = date_filter["period_start"]
+    period_end = date_filter["period_end"]
+
+    kpis = dashboard_kpis(vehicle_id, period_start=period_start, period_end=period_end)
+    reminders_all = upcoming_due_dates(30)
+    reminders = reminders_all if not vehicle_id else [r for r in reminders_all if r["vehicle_id"] == vehicle_id]
+    # Primer vencimiento por vehículo (para la tabla de vehículos)
+    next_reminder_by_vid = {}
+    for r in reminders_all:
+        vid = r["vehicle_id"]
+        if vid not in next_reminder_by_vid:
+            next_reminder_by_vid[vid] = r
+
     vehicles = Vehicle.query.filter(Vehicle.active == True).all()
     logger.debug("Dashboard: %d vehículos activos encontrados", len(vehicles))
-    
+
+    # Gastos de taller por vehículo en el periodo (para €/km gasoil+taller)
+    workshop_totals = (
+        db.session.query(
+            ExpenseEntry.vehicle_id,
+            func.coalesce(func.sum(ExpenseEntry.total_amount), 0).label("total"),
+        )
+        .filter(
+            ExpenseEntry.vehicle_id.in_([v.id for v in vehicles]),
+            ExpenseEntry.date >= period_start,
+            ExpenseEntry.date <= period_end,
+            ExpenseEntry.category == "workshop",
+        )
+        .group_by(ExpenseEntry.vehicle_id)
+        .all()
+    )
+    workshop_by_vid = {r.vehicle_id: float(r.total) for r in workshop_totals}
+
     vehicles_with_kpis = []
     for vehicle in vehicles:
-        vehicle_kpis = dashboard_kpis(vehicle.id)
-        logger.debug("Vehículo %s (%s): combustible=%.1f L, gastos=%.2f €", 
-                     vehicle.plate, vehicle.id, 
-                     vehicle_kpis.get("fuel_liters_month", 0),
-                     vehicle_kpis.get("expenses_amount_month", 0))
+        vehicle_kpis = dashboard_kpis(
+            vehicle.id, period_start=period_start, period_end=period_end
+        )
+        consumption_stats = calculate_fuel_consumption_stats(
+            vehicle.id, date_from=period_start, date_to=period_end
+        )
+        total_km = (consumption_stats or {}).get("total_km")
+        fuel_cost = (consumption_stats or {}).get("total_cost") or 0
+        workshop_total = workshop_by_vid.get(vehicle.id, 0)
+        if total_km and total_km > 0:
+            cost_per_km_with_workshop = round((fuel_cost + workshop_total) / total_km, 4)
+        else:
+            cost_per_km_with_workshop = None
         vehicles_with_kpis.append({
             "vehicle": vehicle,
-            "kpis": vehicle_kpis
+            "kpis": vehicle_kpis,
+            "consumption_stats": consumption_stats,
+            "next_reminder": next_reminder_by_vid.get(vehicle.id),
+            "cost_per_km_with_workshop": cost_per_km_with_workshop,
+            "workshop_amount": workshop_by_vid.get(vehicle.id, 0),
         })
-    
+
     return render_template(
         "dashboard.html",
         kpis=kpis,
         reminders=reminders[:10],
         vehicles_with_kpis=vehicles_with_kpis,
+        date_filter=date_filter,
     )
 
 
@@ -324,13 +407,157 @@ def serve_upload(filename):
     return send_file(path, as_attachment=False)
 
 
+DOC_TYPE_TO_EXPENSE_CATEGORY = {
+    "invoice": ExpenseCategory.OTHER.value,
+    "delivery_note": ExpenseCategory.OTHER.value,
+    "insurance_policy": ExpenseCategory.INSURANCE.value,
+    "itv": ExpenseCategory.ITV.value,
+    "tachograph": ExpenseCategory.ITV.value,
+    "workshop_invoice": ExpenseCategory.WORKSHOP.value,
+    "tires_invoice": ExpenseCategory.TIRES.value,
+}
+
+
+def _parse_decimal(value, default=None):
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return default
+    try:
+        return Decimal(str(value).replace(",", ".").strip())
+    except (ValueError, TypeError):
+        return default
+
+
+def _parse_date(value):
+    if not value or (isinstance(value, str) and not value.strip()):
+        return None
+    try:
+        if isinstance(value, date):
+            return value
+        s = str(value).strip()
+        if len(s) == 10 and "-" in s:
+            return date.fromisoformat(s)
+        from datetime import datetime as dt
+        for fmt in ("%d/%m/%Y", "%d-%m-%Y"):
+            try:
+                return dt.strptime(s, fmt).date()
+            except ValueError:
+                continue
+    except (ValueError, TypeError):
+        pass
+    return None
+
+
 @web_bp.route("/documentos/subir", methods=["GET", "POST"])
 def document_upload():
     if request.method == "POST":
+        entry_mode = request.form.get("entry_mode", "").strip()
         vehicle_id = request.form.get("vehicle_id", type=int)
         if not vehicle_id:
             flash("Selecciona un vehículo.", "danger")
             return redirect(url_for("web.document_upload"))
+
+        if entry_mode == "manual":
+            # Entrada manual: crear documento sin archivo y crear Fuel/Expense/Reminder según tipo
+            doc_type = (request.form.get("doc_type") or "").strip() or "other"
+            issue_date = _parse_date(request.form.get("issue_date"))
+            if not issue_date:
+                flash("La fecha de emisión es obligatoria.", "danger")
+                return redirect(url_for("web.document_upload"))
+
+            total_amount = _parse_decimal(request.form.get("total_amount"))
+            if total_amount is None or total_amount < 0:
+                flash("El importe total es obligatorio y debe ser ≥ 0.", "danger")
+                return redirect(url_for("web.document_upload"))
+
+            subtotal_amount = _parse_decimal(request.form.get("subtotal_amount"))
+            tax_amount = _parse_decimal(request.form.get("tax_amount"))
+            if subtotal_amount is None and tax_amount is None:
+                subtotal_amount = total_amount / Decimal("1.21")
+                tax_amount = total_amount - subtotal_amount
+            elif subtotal_amount is None:
+                subtotal_amount = total_amount - (tax_amount or Decimal("0"))
+            elif tax_amount is None:
+                tax_amount = total_amount - subtotal_amount
+
+            vendor = (request.form.get("vendor") or "").strip() or None
+            due_date = _parse_date(request.form.get("due_date"))
+
+            doc = Document(
+                vehicle_id=vehicle_id,
+                doc_type=doc_type,
+                file_path="manual",
+                status=DocumentStatus.PROCESSED.value,
+                issue_date=issue_date,
+                due_date=due_date,
+                subtotal_amount=subtotal_amount,
+                tax_amount=tax_amount,
+                total_amount=total_amount,
+                vendor=vendor,
+            )
+            db.session.add(doc)
+            db.session.flush()
+
+            if doc_type == DocumentType.FUEL_TICKET.value:
+                liters = _parse_decimal(request.form.get("liters"))
+                price_per_liter = _parse_decimal(request.form.get("price_per_liter"))
+                kilometers = request.form.get("kilometers", "").strip()
+                kilometers = int(kilometers) if kilometers.isdigit() else None
+                if liters is None or liters <= 0:
+                    flash("Para ticket de combustible indica los litros.", "danger")
+                    db.session.rollback()
+                    return redirect(url_for("web.document_upload"))
+                if price_per_liter is None or price_per_liter <= 0:
+                    price_per_liter = total_amount / liters
+                fuel_entry = FuelEntry(
+                    document_id=doc.id,
+                    vehicle_id=vehicle_id,
+                    date=issue_date,
+                    liters=liters,
+                    price_per_liter=price_per_liter,
+                    kilometers=kilometers,
+                    subtotal_amount=subtotal_amount,
+                    tax_amount=tax_amount,
+                    total_amount=total_amount,
+                    station=vendor,
+                )
+                db.session.add(fuel_entry)
+                # Sincronizar kilómetros también en el documento
+                if kilometers is not None:
+                    doc.kilometers = kilometers
+            else:
+                category = DOC_TYPE_TO_EXPENSE_CATEGORY.get(doc_type, ExpenseCategory.OTHER.value)
+                expense = ExpenseEntry(
+                    document_id=doc.id,
+                    vehicle_id=vehicle_id,
+                    date=issue_date,
+                    category=category,
+                    subtotal_amount=subtotal_amount,
+                    tax_amount=tax_amount,
+                    total_amount=total_amount,
+                    vendor=vendor,
+                )
+                db.session.add(expense)
+
+            reminder_kind = {
+                "insurance_policy": ReminderKind.INSURANCE.value,
+                "itv": ReminderKind.ITV.value,
+                "tachograph": ReminderKind.TACHOGRAPH.value,
+            }.get(doc_type)
+            if due_date and reminder_kind:
+                reminder = Reminder(
+                    vehicle_id=vehicle_id,
+                    kind=reminder_kind,
+                    due_date=due_date,
+                    status="active",
+                    document_id=doc.id,
+                )
+                db.session.add(reminder)
+
+            db.session.commit()
+            flash("Documento registrado correctamente (entrada manual).", "success")
+            return redirect(url_for("web.document_detail", did=doc.id))
+
+        # Subida de archivo
         f = request.files.get("file")
         if not f or not f.filename:
             flash("Selecciona un archivo.", "danger")
@@ -374,7 +601,7 @@ def document_upload():
         return redirect(url_for("web.document_detail", did=doc.id))
 
     vehicles = Vehicle.query.filter(Vehicle.active == True).all()
-    return render_template("documents/upload.html", vehicles=vehicles)
+    return render_template("documents/upload.html", vehicles=vehicles, doc_type_labels=DOC_TYPE_LABELS)
 
 
 # --- Reportes ---
@@ -397,6 +624,19 @@ def reports():
         dt = date.today()
 
     fuel_data = fuel_consumption_by_vehicle(vehicle_id, df, dt)
+    # Detalle de tickets de combustible con kilómetros (para informes)
+    fuel_tickets_q = FuelEntry.query.filter(
+        FuelEntry.date >= df,
+        FuelEntry.date <= dt,
+    )
+    if vehicle_id:
+        fuel_tickets_q = fuel_tickets_q.filter(FuelEntry.vehicle_id == vehicle_id)
+    fuel_tickets = (
+        fuel_tickets_q
+        .order_by(FuelEntry.date.desc(), FuelEntry.id.desc())
+        .limit(300)
+        .all()
+    )
     expense_data = expenses_by_category(vehicle_id, df, dt)
     # Mostrar todos los vencimientos activos en reportes
     reminders_data = upcoming_due_dates(None)
@@ -407,6 +647,7 @@ def reports():
     return render_template(
         "reports/index.html",
         fuel_data=fuel_data,
+        fuel_tickets=fuel_tickets,
         expense_data=expense_data,
         reminders_data=reminders_data,
         vehicles=vehicles,

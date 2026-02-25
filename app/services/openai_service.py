@@ -45,7 +45,7 @@ Devuelve ÚNICAMENTE un objeto JSON válido, sin texto adicional, con esta estru
     "price_per_liter": número o null,
     "fuel_type": "gasoil/gasolina/diesel etc o null"
   },
-  "odometer_km": número entero o null,
+  "kilometers": número entero (cuentakilómetros del vehículo) o null,
   "notes": "texto libre o null",
   "confidence": número entre 0 y 1
 }
@@ -153,7 +153,7 @@ def _normalize_response(data: dict) -> dict:
         "date_due": data.get("date_due"),
         "amounts": data.get("amounts") or {},
         "fuel": data.get("fuel") or {},
-        "odometer_km": data.get("odometer_km"),
+        "kilometers": data.get("kilometers") or data.get("odometer_km"),
         "notes": data.get("notes"),
         "confidence": float(data.get("confidence", 0)),
     }

@@ -256,7 +256,7 @@ def handle_text_message(chat_id: int, user_id: int, text: str, token: str) -> No
                 # También actualizar el odómetro en el documento
                 doc = Document.query.get(session.pending_document_id)
                 if doc:
-                    doc.odometer_km = kilometers
+                    doc.kilometers = kilometers
                 db.session.commit()
                 if kilometers:
                     send_message(token, chat_id, f"✅ Kilómetros guardados: {kilometers} km")
