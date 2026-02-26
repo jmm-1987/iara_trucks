@@ -51,13 +51,16 @@ def normalize_date(value: Any) -> str | None:
     """
     Normaliza una fecha a formato YYYY-MM-DD.
 
-    Acepta: "01/02/2024", "01-02-2024", "2024-02-01", "01.02.2024"
+    Acepta: "01/02/2024", "01-02-2024", "2024-02-01", "01.02.2024", "27-01-2026 21:05:05"
     """
     if value is None:
         return None
     s = str(value).strip()
     if not s:
         return None
+    # Si viene con hora (ej. "27-01-2026 21:05:05"), tomar solo la parte de fecha
+    if " " in s:
+        s = s.split()[0]
 
     formats = [
         "%Y-%m-%d",

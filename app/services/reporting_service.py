@@ -100,8 +100,9 @@ def calculate_fuel_consumption_stats(vehicle_id: int, date_from: date | None = N
         }
     
     total_km = km_end - km_start
-    total_liters = sum(float(e.liters or 0) for e in entries[1:])  # Excluir el primer repostaje
-    total_cost = sum(float(e.total_amount or 0) for e in entries[1:])  # Excluir el primer repostaje
+    # Litros: sumar todos excepto el ÚLTIMO (su combustible aún no se ha consumido en el tramo)
+    total_liters = sum(float(e.liters or 0) for e in entries[:-1])
+    total_cost = sum(float(e.total_amount or 0) for e in entries[:-1])
     
     if total_km > 0:
         liters_per_100km = (total_liters / total_km) * 100 if total_liters > 0 else None

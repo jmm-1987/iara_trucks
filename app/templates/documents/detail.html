@@ -25,6 +25,10 @@
                     {% set km = (doc.fuel_entry.kilometers if doc.fuel_entry and doc.fuel_entry.kilometers is not none else doc.kilometers) if doc.fuel_entry else doc.kilometers %}
                     {{ km if km is not none else '-' }}
                 </td></tr>
+                    {% if doc.doc_type == 'fuel_ticket' and doc.fuel_entry %}
+                    <tr><th>Litros</th><td>{{ "%.2f"|format(doc.fuel_entry.liters) if doc.fuel_entry.liters is not none else '-' }}</td></tr>
+                    <tr><th>Precio/litro</th><td>{% if doc.fuel_entry.price_per_liter is not none %}{{ "%.4f"|format(doc.fuel_entry.price_per_liter) }} €{% else %}—{% endif %}</td></tr>
+                    {% endif %}
                     <tr><th>Subido</th><td>{{ doc.uploaded_at|date_format }}</td></tr>
                     {% if doc.error_message %}
                     <tr><th>Error</th><td class="text-danger">{{ doc.error_message }}</td></tr>

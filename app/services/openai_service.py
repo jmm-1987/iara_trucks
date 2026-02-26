@@ -32,7 +32,7 @@ Devuelve ÚNICAMENTE un objeto JSON válido, sin texto adicional, con esta estru
   "vehicle_identifier_guess": "matrícula si aparece o null",
   "vendor_name": "nombre proveedor o null",
   "vendor_tax_id": "CIF/NIF o null",
-  "date_issue": "YYYY-MM-DD o null",
+  "date_issue": "YYYY-MM-DD - FECHA DEL TICKET/FACTURA (la que aparece impresa en el documento, ej. 27-01-2026). OBLIGATORIO para fuel_ticket.",
   "date_due": "YYYY-MM-DD para vencimientos (seguro/ITV/tacógrafo) o null",
   "amounts": {
     "subtotal": número o null,
@@ -51,7 +51,7 @@ Devuelve ÚNICAMENTE un objeto JSON válido, sin texto adicional, con esta estru
 }
 
 Reglas de detección de tipo:
-- fuel_ticket: Si tiene estación de servicio, litros, precio por litro, tipo de combustible
+- fuel_ticket: Si tiene estación de servicio, litros, precio por litro, tipo de combustible. IMPORTANTE: extrae SIEMPRE la fecha del ticket (suele estar junto a la hora, ej. 27-01-2026 21:05)
 - invoice: Si tiene número de factura, IVA desglosado, datos fiscales completos (CIF, razón social)
 - delivery_note: Si dice "albarán", "entrega", "delivery note", o es documento de entrega sin factura completa
 - insurance_policy: Si menciona seguro, póliza, aseguradora, fechas de vigencia
@@ -62,7 +62,7 @@ Reglas de detección de tipo:
 
 Reglas generales:
 - Usa null para campos no encontrados
-- Fechas en formato YYYY-MM-DD
+- Fechas: extrae la fecha del documento y devuélvela en YYYY-MM-DD (si viene con hora "27-01-2026 21:05", usa solo "2026-01-27")
 - Importes con punto decimal (ej: 45.99)
 - Si el documento está en español, respeta los formatos locales pero normaliza en el JSON
 """
