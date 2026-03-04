@@ -128,7 +128,11 @@ def index():
     workshop_totals = (
         db.session.query(
             ExpenseEntry.vehicle_id,
-            func.coalesce(func.sum(ExpenseEntry.total_amount), 0).label("total"),
+            # Usar SIEMPRE base (subtotal) para los gastos de taller; si no hubiera base en algún registro antiguo, usar total como fallback.
+            func.coalesce(
+                func.sum(func.coalesce(ExpenseEntry.subtotal_amount, ExpenseEntry.total_amount)),
+                0,
+            ).label("total"),
         )
         .filter(
             ExpenseEntry.vehicle_id.in_([v.id for v in vehicles]),

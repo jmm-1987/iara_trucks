@@ -102,18 +102,28 @@ def calculate_fuel_consumption_stats(vehicle_id: int, date_from: date | None = N
     total_km = km_end - km_start
     # Litros: sumar todos excepto el ÚLTIMO (su combustible aún no se ha consumido en el tramo)
     total_liters = sum(float(e.liters or 0) for e in entries[:-1])
-    total_cost = sum(float(e.total_amount or 0) for e in entries[:-1])
+    # Coste: usar siempre la BASE (subtotal). Si no hubiera base en algún registro antiguo, usar total como fallback.
+    total_cost = sum(
+        float((e.subtotal_amount or e.total_amount) or 0)
+        for e in entries[:-1]
+    )
     
     if total_km > 0:
         liters_per_100km = (total_liters / total_km) * 100 if total_liters > 0 else None
+        # Coste real por km con la base (sin IVA)
         cost_per_km = total_cost / total_km if total_cost > 0 else None
+        # Coste teórico por km suponiendo precio fijo 1,05 €/L
+        ref_price_per_liter = 1.05
+        cost_per_km_105 = (total_liters * ref_price_per_liter) / total_km if total_liters > 0 else None
     else:
         liters_per_100km = None
         cost_per_km = None
+        cost_per_km_105 = None
     
     return {
         "liters_per_100km": round(liters_per_100km, 2) if liters_per_100km else None,
         "cost_per_km": round(cost_per_km, 4) if cost_per_km else None,
+        "cost_per_km_105": round(cost_per_km_105, 4) if cost_per_km_105 else None,
         "total_km": total_km,
         "total_liters": round(total_liters, 2),
         "total_cost": round(total_cost, 2),
@@ -130,7 +140,8 @@ def expenses_by_category(
         db.session.query(
             ExpenseEntry.vehicle_id,
             ExpenseEntry.category,
-            func.sum(ExpenseEntry.subtotal_amount).label("subtotal"),
+            # Base: si no hay subtotal en registros antiguos, usar total como fallback.
+            func.sum(func.coalesce(ExpenseEntry.subtotal_amount, ExpenseEntry.total_amount)).label("subtotal"),
             func.sum(ExpenseEntry.tax_amount).label("tax"),
             func.sum(ExpenseEntry.total_amount).label("total"),
         )
@@ -236,8 +247,9 @@ def dashboard_kpis(
         func.sum(FuelEntry.total_amount).label("amount"),
     ).first()
     fuel_liters_month = float(fuel_month.liters or 0) if fuel_month and fuel_month.liters else 0.0
+    # Usar SIEMPRE base (subtotal) como referencia económica del combustible
     fuel_subtotal_month = float(fuel_month.subtotal or 0) if fuel_month and fuel_month.subtotal else 0.0
-    fuel_amount_month = float(fuel_month.amount or 0) if fuel_month and fuel_month.amount else 0.0
+    fuel_amount_month = fuel_subtotal_month
 
     # Gastos en el periodo
     eq = ExpenseEntry.query.filter(
@@ -246,7 +258,12 @@ def dashboard_kpis(
     )
     if vehicle_id:
         eq = eq.filter(ExpenseEntry.vehicle_id == vehicle_id)
-    expenses_month = eq.with_entities(func.sum(ExpenseEntry.total_amount)).scalar()
+    # Para gastos, usar siempre la BASE (subtotal). Si no hubiera base en algún registro antiguo, usar total como fallback.
+    expenses_month = eq.with_entities(
+        func.sum(
+            func.coalesce(ExpenseEntry.subtotal_amount, ExpenseEntry.total_amount)
+        )
+    ).scalar()
     expenses_amount_month = float(expenses_month or 0)
 
     # Vencimientos próximos 30 días (siempre desde hoy, no depende del filtro)
@@ -314,7 +331,8 @@ def get_vehicle_statistics(vehicle_id: int) -> dict:
         ExpenseEntry.vehicle_id == vehicle_id,
         ExpenseEntry.date >= month_start
     ).with_entities(
-        func.sum(ExpenseEntry.subtotal_amount).label("subtotal"),
+        # Usar siempre base (subtotal); si no hay, usar total como fallback para datos antiguos
+        func.sum(func.coalesce(ExpenseEntry.subtotal_amount, ExpenseEntry.total_amount)).label("subtotal"),
         func.sum(ExpenseEntry.tax_amount).label("tax"),
         func.sum(ExpenseEntry.total_amount).label("total"),
     ).first()
@@ -325,15 +343,18 @@ def get_vehicle_statistics(vehicle_id: int) -> dict:
         FuelEntry.date >= year_start
     ).with_entities(
         func.sum(FuelEntry.liters).label("liters"),
+        func.sum(FuelEntry.subtotal_amount).label("subtotal"),
         func.sum(FuelEntry.total_amount).label("total"),
     ).first()
     
+    # Gastos acumulados: usar TODO el histórico del vehículo (no solo el año actual)
     expenses_year = ExpenseEntry.query.filter(
         ExpenseEntry.vehicle_id == vehicle_id,
-        ExpenseEntry.date >= year_start
     ).with_entities(
+        func.sum(func.coalesce(ExpenseEntry.subtotal_amount, ExpenseEntry.total_amount)).label("subtotal"),
+        func.sum(ExpenseEntry.tax_amount).label("tax"),
         func.sum(ExpenseEntry.total_amount).label("total"),
-    ).scalar()
+    ).first()
     
     # Gastos por categoría (año actual)
     expenses_by_cat = expenses_by_category(vehicle_id, year_start, today)
@@ -372,8 +393,9 @@ def get_vehicle_statistics(vehicle_id: int) -> dict:
         },
         "kpis_year": {
             "fuel_liters": float(fuel_year.liters or 0) if fuel_year else 0,
-            "fuel_total": float(fuel_year.total or 0) if fuel_year else 0,
-            "expenses_total": float(expenses_year or 0),
+            # Para el año también usamos BASE (subtotal) como referencia económica principal tanto en combustible como en gastos.
+            "fuel_total": float(fuel_year.subtotal or 0) if fuel_year and fuel_year.subtotal else 0,
+            "expenses_total": float(expenses_year.subtotal or 0) if expenses_year and expenses_year.subtotal else 0,
         },
         "month_label": month_label,
         "year_label": year_label,

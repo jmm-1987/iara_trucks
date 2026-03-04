@@ -465,7 +465,7 @@
           </div>
           <div class="pill blue">Combustible</div>
         </div>
-        <div class="muted">{{ "%.2f"|format(kpis.fuel_amount_month) }} € en {{ date_filter.period_label }}</div>
+        <div class="muted">{{ "%.2f"|format(kpis.fuel_amount_month) }} € en {{ date_filter.period_label }} (base sin IVA)</div>
       </div>
 
       <div class="card glow">
@@ -501,12 +501,12 @@
                 <th>Matrícula</th>
                 <th>Estado</th>
                 <th>Consumo</th>
+                <th>Km recorridos (periodo)</th>
                 <th>L/100 km</th>
                 <th>€/km gasoil</th>
-                <th>€/km gasoil+taller</th>
+                <th>€/km gasoil a 1,05€</th>
                 <th>Gasoil</th>
                 <th>Taller</th>
-                <th>Próximo vencimiento</th>
               </tr>
             </thead>
             <tbody>
@@ -514,25 +514,18 @@
               {% set v = item.vehicle %}
               {% set vk = item.kpis %}
               {% set cs = item.consumption_stats or {} %}
-              {% set nr = item.next_reminder %}
               {% set rem = vk.count_reminders_30 or 0 %}
               {% set sev = 'warn' if rem > 0 else 'ok' %}
               <tr class="vehicle-row-link" data-href="{{ url_for('web.vehicle_detail', vid=v.id) }}" role="button" tabindex="0" title="Ver ficha del vehículo">
                 <td><strong>{{ v.plate }}</strong></td>
                 <td><span class="status {{ sev }}"><i></i>{% if sev == 'warn' %}Aviso{% else %}OK{% endif %}</span></td>
                 <td>{{ "%.1f"|format(vk.fuel_liters_month or 0) }} L</td>
+                <td>{% if cs.total_km is not none %}{{ cs.total_km }} km{% else %}—{% endif %}</td>
                 <td>{% if cs.liters_per_100km is not none %}{{ "%.2f"|format(cs.liters_per_100km) }}{% else %}—{% endif %}</td>
                 <td>{% if cs.cost_per_km is not none %}{{ "%.4f"|format(cs.cost_per_km) }} €{% else %}—{% endif %}</td>
-                <td>{% if item.cost_per_km_with_workshop is not none %}{{ "%.4f"|format(item.cost_per_km_with_workshop) }} €{% else %}—{% endif %}</td>
+                <td>{% if cs.cost_per_km_105 is not none %}{{ "%.4f"|format(cs.cost_per_km_105) }} €{% else %}—{% endif %}</td>
                 <td>{{ "%.2f"|format(vk.fuel_amount_month or 0) }} €</td>
                 <td>{{ "%.2f"|format(item.workshop_amount or 0) }} €</td>
-                <td class="vehicle-next-due">
-                  {% if nr %}
-                  <span class="status {% if nr.days_remaining <= 7 %}critical{% elif nr.days_remaining <= 30 %}warn{% else %}ok{% endif %}"><i></i>{{ nr.kind }} {{ nr.due_date }} ({{ nr.days_remaining }} d)</span>
-                  {% else %}
-                  —
-                  {% endif %}
-                </td>
               </tr>
               {% endfor %}
               {% if not vehicles_with_kpis %}

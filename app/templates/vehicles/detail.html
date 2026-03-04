@@ -114,13 +114,13 @@
           </div>
           <div class="pill blue">Combustible</div>
         </div>
-        <div class="muted">{{ "%.2f"|format(kpis_month.fuel_total) }} € en {{ month_label }}</div>
+        <div class="muted">{{ "%.2f"|format(kpis_month.fuel_subtotal) }} € en {{ month_label }}</div>
       </div>
       <div class="card glow">
         <div class="cardHead">
           <div>
             <div class="label">Gastos (mes)</div>
-            <div class="value">{{ "%.2f"|format(kpis_month.expenses_total) }} €</div>
+            <div class="value">{{ "%.2f"|format(kpis_month.expenses_subtotal) }} €</div>
           </div>
           <div class="pill orange">Gastos</div>
         </div>
@@ -303,13 +303,19 @@
         </div>
         <div class="tableWrap">
           <table class="table">
-            <thead><tr><th>Fecha</th><th>Proveedor</th><th class="right">Importe</th></tr></thead>
+            <thead><tr><th>Fecha</th><th>Proveedor</th><th class="right">Importe base</th></tr></thead>
             <tbody>
               {% for w in workshop_expenses %}
               <tr>
                 <td>{{ w.date|date_format }}</td>
                 <td>{{ w.vendor or '-' }}</td>
-                <td class="right">{{ "%.2f"|format(w.total_amount) }} €</td>
+                <td class="right">
+                  {% if w.subtotal_amount is not none %}
+                    {{ "%.2f"|format(w.subtotal_amount) }} €
+                  {% else %}
+                    {{ "%.2f"|format(w.total_amount) }} €
+                  {% endif %}
+                </td>
               </tr>
               {% endfor %}
               {% if not workshop_expenses %}

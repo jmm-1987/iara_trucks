@@ -259,7 +259,7 @@
                         <th>Fecha</th>
                         <th>Vehículo</th>
                         <th>Litros</th>
-                        <th>Total</th>
+                        <th>Base (sin IVA)</th>
                         <th>Kilómetros</th>
                     </tr>
                 </thead>
@@ -270,7 +270,10 @@
                         <td>{{ fe.date }}</td>
                         <td>{{ fe.vehicle.plate if fe.vehicle else '-' }}</td>
                         <td>{{ "%.2f"|format(fe.liters or 0) }}</td>
-                        <td>{{ "%.2f"|format(fe.total_amount or 0) }} €</td>
+                        <td>
+                            {% set base = fe.subtotal_amount or fe.total_amount %}
+                            {{ "%.2f"|format(base or 0) }} €
+                        </td>
                         <td>{{ km if km is not none else '-' }}</td>
                     </tr>
                     {% endfor %}

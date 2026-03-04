@@ -25,6 +25,11 @@ IMPORTANTE: Identifica primero el TIPO de documento antes de extraer datos:
 - tires_invoice: Factura de neumáticos
 - other: Cualquier otro documento
 
+En los tickets de combustible es MUY IMPORTANTE que intentes leer el valor de kilómetros del cuentakilómetros del vehículo.
+Normalmente está escrito a bolígrafo en la parte superior del ticket (por ejemplo "km 123456" o "123.456 km").
+Si detectas un número que parezca el cuentakilómetros, rellena el campo "kilometers" con ese valor como número entero.
+Solo deja "kilometers" en null si realmente no ves ningún valor claro de cuentakilómetros.
+
 Devuelve ÚNICAMENTE un objeto JSON válido, sin texto adicional, con esta estructura exacta:
 
 {
@@ -51,7 +56,7 @@ Devuelve ÚNICAMENTE un objeto JSON válido, sin texto adicional, con esta estru
 }
 
 Reglas de detección de tipo:
-- fuel_ticket: Si tiene estación de servicio, litros, precio por litro, tipo de combustible. IMPORTANTE: extrae SIEMPRE la fecha del ticket (suele estar junto a la hora, ej. 27-01-2026 21:05)
+- fuel_ticket: Si tiene estación de servicio, litros, precio por litro, tipo de combustible. IMPORTANTE: extrae SIEMPRE la fecha del ticket (suele estar junto a la hora, ej. 27-01-2026 21:05) y los kilómetros del cuentakilómetros si aparecen (normalmente escritos a mano arriba del ticket).
 - invoice: Si tiene número de factura, IVA desglosado, datos fiscales completos (CIF, razón social)
 - delivery_note: Si dice "albarán", "entrega", "delivery note", o es documento de entrega sin factura completa
 - insurance_policy: Si menciona seguro, póliza, aseguradora, fechas de vigencia
