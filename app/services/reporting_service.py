@@ -78,6 +78,7 @@ def calculate_fuel_consumption_stats(vehicle_id: int, date_from: date | None = N
         return {
             "liters_per_100km": None,
             "cost_per_km": None,
+            "cost_per_km_105": None,
             "total_km": None,
             "total_liters": None,
             "total_cost": None,

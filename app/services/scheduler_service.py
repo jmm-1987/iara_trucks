@@ -8,6 +8,7 @@ from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.models import Document, DocumentStatus, Reminder, db
+from app.services.email_ingest_service import process_incoming_emails
 from app.services.document_processor import process_document
 
 logger = logging.getLogger(__name__)
@@ -59,13 +60,17 @@ def start_scheduler(app):
 
     def _with_app():
         with app.app_context():
+            # 1) Traer adjuntos de la cuenta IMAP y crear Document pendientes
+            process_incoming_emails()
+            # 2) Procesar documentos pendientes (tanto web/Telegram como email)
             process_pending_documents()
+            # 3) Actualizar recordatorios
             update_reminder_statuses()
 
     _scheduler.add_job(
         func=_with_app,
         trigger="interval",
-        minutes=5,
+        minutes=1,
         id="process_pending",
     )
     _scheduler.start()

@@ -5,10 +5,10 @@
 <style>
   /* Panel dashboard – mismo formato que rrrr.html */
   .dashboard-panel {
-    --bg: #0b0f14;
-    --panel: #0f1620;
-    --card: #0f1724;
-    --stroke: rgba(255,255,255,.08);
+    --bg: #131c28;
+    --panel: #172232;
+    --card: #1b283a;
+    --stroke: rgba(255,255,255,.12);
     --text: #e8eef7;
     --muted: rgba(232,238,247,.7);
     --muted-strong: rgba(232,238,247,.88);
@@ -29,27 +29,27 @@
     padding: 0;
     min-height: calc(100vh - 3rem);
     background:
-      radial-gradient(1200px 700px at 20% -10%, rgba(77,163,255,.18), transparent 60%),
-      radial-gradient(900px 550px at 100% 0%, rgba(180,140,255,.14), transparent 60%),
-      radial-gradient(900px 550px at 60% 120%, rgba(64,211,156,.10), transparent 60%),
+      radial-gradient(1200px 700px at 20% -10%, rgba(77,163,255,.22), transparent 60%),
+      radial-gradient(900px 550px at 100% 0%, rgba(180,140,255,.16), transparent 60%),
+      radial-gradient(900px 550px at 60% 120%, rgba(64,211,156,.12), transparent 60%),
       var(--bg);
     color: var(--text);
     font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
   }
 
   .dashboard-panel .topbar {
-    padding: 18px 20px;
+    padding: 12px 16px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
     border-bottom: 1px solid var(--stroke);
-    background: rgba(10,14,19,.30);
+    background: rgba(22,31,46,.42);
     backdrop-filter: blur(12px);
     flex-wrap: wrap;
   }
   .dashboard-panel h1 { margin: 0; font-size: 22px; letter-spacing: .2px; }
-  .dashboard-panel .subtitle { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .dashboard-panel .subtitle { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
   .dashboard-panel .topActions {
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end;
   }
@@ -95,35 +95,53 @@
   .dashboard-panel .btnIcon { font-size: 18px; line-height: 0; }
 
   .dashboard-panel .content {
-    padding: 18px 20px 22px;
-    overflow: auto;
+    padding: 12px 16px 16px;
+    overflow-y: auto;
+    overflow-x: hidden;
   }
-  .dashboard-panel .grid { display: grid; gap: 14px; }
-  .dashboard-panel .kpis { grid-template-columns: repeat(2, minmax(200px, 1fr)); }
+  .dashboard-panel .grid { display: grid; gap: 10px; }
+  .dashboard-panel .topSummaryGrid {
+    grid-template-columns: 2fr 1fr;
+    align-items: start;
+    gap: 10px;
+  }
+  .dashboard-panel .summaryGroup {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(200px, 1fr));
+    gap: 10px;
+  }
   .dashboard-panel .mainGrid {
-    margin-top: 14px;
-    grid-template-columns: 1.35fr .65fr;
+    margin-top: 10px;
+    grid-template-columns: 2fr 1fr;
     grid-template-rows: auto auto auto;
     grid-auto-rows: minmax(120px, auto);
     align-items: start;
-    gap: 14px;
+    gap: 10px;
   }
+  .dashboard-panel .mainGrid > .card { min-width: 0; }
   .dashboard-panel .card.alertsCard {
-    grid-row: span 2;
     display: flex;
     flex-direction: column;
     min-height: 0;
   }
+  .dashboard-panel .card.vehiclesCard {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .dashboard-panel .card.workshopCard {
+    grid-column: 2;
+    grid-row: 2;
+  }
   .dashboard-panel .alertsCard .alerts {
     flex: 1;
     overflow-y: auto;
-    min-height: 200px;
+    min-height: 120px;
   }
 
   .dashboard-panel .card {
     border-radius: var(--r);
-    background: linear-gradient(180deg, rgba(255,255,255,.03), transparent 36%),
-                rgba(15,23,36,.68);
+    background: linear-gradient(180deg, rgba(255,255,255,.06), transparent 36%),
+                rgba(26,38,55,.72);
     border: 1px solid var(--stroke);
     box-shadow: var(--glow);
     overflow: hidden;
@@ -139,15 +157,15 @@
   }
   .dashboard-panel .card > * { position: relative; }
   .dashboard-panel .cardHead {
-    padding: 14px 14px 10px;
+    padding: 10px 12px 8px;
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: 12px;
   }
-  .dashboard-panel .label { color: var(--muted-strong); font-size: 12px; letter-spacing: .2px; }
-  .dashboard-panel .value { font-size: 26px; font-weight: 850; margin-top: 6px; color: var(--text); }
-  .dashboard-panel .muted { color: var(--muted-strong); font-size: 12.5px; padding: 0 14px 12px; }
+  .dashboard-panel .label { color: var(--muted-strong); font-size: 11px; letter-spacing: .15px; }
+  .dashboard-panel .value { font-size: 21px; font-weight: 820; margin-top: 4px; color: var(--text); line-height: 1.1; }
+  .dashboard-panel .muted { color: var(--muted-strong); font-size: 11.5px; padding: 0 12px 9px; margin: 0; }
   .dashboard-panel .pill {
     font-size: 12px; font-weight: 800; padding: 6px 10px; border-radius: 999px;
     border: 1px solid var(--stroke); background: rgba(255,255,255,.03); white-space: nowrap;
@@ -158,7 +176,7 @@
   .dashboard-panel .pill.red { border-color: rgba(255,92,112,.25); background: rgba(255,92,112,.10); }
 
   .dashboard-panel .cardTop {
-    padding: 14px;
+    padding: 8px 10px;
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
@@ -167,8 +185,8 @@
     background: rgba(255,255,255,.01);
     flex-wrap: wrap;
   }
-  .dashboard-panel .cardTop .muted { color: var(--muted-strong); }
-  .dashboard-panel .cardTop h2 { margin: 0; font-size: 15px; letter-spacing: .2px; color: var(--text); }
+  .dashboard-panel .cardTop .muted { color: var(--muted-strong); font-size: 11px; margin-top: 1px; }
+  .dashboard-panel .cardTop h2 { margin: 0; font-size: 13px; letter-spacing: .1px; color: var(--text); }
   .dashboard-panel .chipRow { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
   .dashboard-panel .chip {
     border: 1px solid var(--stroke);
@@ -280,7 +298,7 @@
   .dashboard-panel .iconBtn.danger:disabled { background: rgba(255,92,112,.15); color: rgba(255,255,255,.9); }
 
   .dashboard-panel .alerts {
-    padding: 12px 12px 14px;
+    padding: 8px 10px 10px;
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -289,7 +307,7 @@
     border-radius: 16px;
     border: 1px solid var(--stroke);
     background: rgba(255,255,255,.02);
-    padding: 12px;
+    padding: 9px 10px;
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
@@ -343,9 +361,12 @@
   .dashboard-panel .vehicle-next-due .status { white-space: nowrap; }
 
   @media (max-width: 1200px) {
-    .dashboard-panel .kpis { grid-template-columns: repeat(2, minmax(200px, 1fr)); }
+    .dashboard-panel .topSummaryGrid { grid-template-columns: 1fr; }
+    .dashboard-panel .summaryGroup { grid-template-columns: repeat(2, minmax(200px, 1fr)); }
     .dashboard-panel .mainGrid { grid-template-columns: 1fr; }
     .dashboard-panel .card.alertsCard { grid-row: auto; }
+    .dashboard-panel .card.vehiclesCard { grid-column: auto; grid-row: auto; }
+    .dashboard-panel .card.workshopCard { grid-column: auto; }
     .dashboard-panel .search { min-width: 240px; }
   }
   .dashboard-panel .dateFilterBar {
@@ -456,32 +477,70 @@
   </form>
 
   <section class="content">
-    <div class="grid kpis">
-      <div class="card glow">
-        <div class="cardHead">
+    <div class="grid topSummaryGrid">
+      <div class="card">
+        <div class="cardTop">
           <div>
-            <div class="label">Consumo (mes)</div>
-            <div class="value">{{ "%.0f"|format(kpis.fuel_liters_month) }} L</div>
+            <h2>Consumo y gastos</h2>
+            <p class="muted">{{ date_filter.period_label }}</p>
           </div>
-          <div class="pill blue">Combustible</div>
         </div>
-        <div class="muted">{{ "%.2f"|format(kpis.fuel_amount_month) }} € en {{ date_filter.period_label }} (base sin IVA)</div>
+        <div class="summaryGroup p-2">
+          <div class="card glow">
+            <div class="cardHead">
+              <div>
+                <div class="label">Consumo (mes)</div>
+                <div class="value">{{ "%.0f"|format(kpis.fuel_liters_month) }} L</div>
+              </div>
+              <div class="pill blue">Combustible</div>
+            </div>
+            <div class="muted">{{ "%.2f"|format(kpis.fuel_amount_month) }} € en {{ date_filter.period_label }} (base sin IVA)</div>
+          </div>
+          <div class="card glow">
+            <div class="cardHead">
+              <div>
+                <div class="label">Gastos</div>
+                <div class="value">{{ "%.2f"|format(kpis.expenses_amount_month) }} €</div>
+              </div>
+              <div class="pill orange">Gastos</div>
+            </div>
+            <div class="muted">Otros gastos en {{ date_filter.period_label }}</div>
+          </div>
+        </div>
       </div>
-
-      <div class="card glow">
-        <div class="cardHead">
+      <div class="card alertsCard">
+        <div class="cardTop">
           <div>
-            <div class="label">Gastos</div>
-            <div class="value">{{ "%.2f"|format(kpis.expenses_amount_month) }} €</div>
+            <h2>Alertas & vencimientos</h2>
+            <p class="muted">Lo más urgente primero</p>
           </div>
-          <div class="pill orange">Gastos</div>
+          <button type="button" class="btn small" disabled title="Próximamente">Nueva tarea</button>
         </div>
-        <div class="muted">Otros gastos en {{ date_filter.period_label }}</div>
+        <div class="alerts">
+          {% for r in reminders[:8] %}
+          <div class="alert">
+            <div class="alertLeft">
+              <div class="badge {% if r.days_remaining <= 7 %}red{% elif r.days_remaining <= 30 %}orange{% else %}green{% endif %}">🗓</div>
+              <div>
+                <p class="alertTitle">{{ r.kind }} • {{ r.vehicle_plate }}</p>
+                <div class="alertMeta">Vence {{ r.due_date }} • {{ r.days_remaining }} días</div>
+              </div>
+            </div>
+            <div class="alertRight">
+              <button type="button" class="iconBtn" title="Próximamente" disabled>✓</button>
+              <button type="button" class="iconBtn danger" title="Próximamente" disabled>🗑</button>
+            </div>
+          </div>
+          {% endfor %}
+          {% if not reminders %}
+          <p class="chartEmpty" style="padding: 12px 14px; margin: 0;">No hay alertas próximas.</p>
+          {% endif %}
+        </div>
       </div>
     </div>
 
     <div class="grid mainGrid">
-      <div class="card tableCard">
+      <div class="card tableCard vehiclesCard">
         <div class="cardTop">
           <div>
             <h2>Vehículos</h2>
@@ -536,103 +595,7 @@
         </div>
       </div>
 
-      <div class="card alertsCard">
-        <div class="cardTop">
-          <div>
-            <h2>Alertas & vencimientos</h2>
-            <p class="muted">Lo más urgente primero</p>
-          </div>
-          <button type="button" class="btn small" disabled title="Próximamente">Nueva tarea</button>
-        </div>
-        <div class="alerts">
-          {% for r in reminders[:8] %}
-          <div class="alert">
-            <div class="alertLeft">
-              <div class="badge {% if r.days_remaining <= 7 %}red{% elif r.days_remaining <= 30 %}orange{% else %}green{% endif %}">🗓</div>
-              <div>
-                <p class="alertTitle">{{ r.kind }} • {{ r.vehicle_plate }}</p>
-                <div class="alertMeta">Vence {{ r.due_date }} • {{ r.days_remaining }} días</div>
-              </div>
-            </div>
-            <div class="alertRight">
-              <button type="button" class="iconBtn" title="Próximamente" disabled>✓</button>
-              <button type="button" class="iconBtn danger" title="Próximamente" disabled>🗑</button>
-            </div>
-          </div>
-          {% endfor %}
-          {% if not reminders %}
-          <p class="chartEmpty" style="padding: 12px 14px; margin: 0;">No hay alertas próximas.</p>
-          {% endif %}
-        </div>
-      </div>
-
-      <div class="card chartCard">
-        <div class="cardTop">
-          <div>
-            <h2>Consumo & coste (12 semanas)</h2>
-            <p class="muted">Comparativa litros vs €</p>
-          </div>
-          <div class="legend">
-            <span class="lgItem"><i class="lgDot"></i> Litros</span>
-            <span class="lgItem"><i class="lgDot alt"></i> €</span>
-          </div>
-        </div>
-        <div class="chart">
-          <p class="chartEmpty">Sin datos de serie temporal (próximamente).</p>
-        </div>
-      </div>
-
-      <div class="card tableCard">
-        <div class="cardTop">
-          <div>
-            <h2>Vencimientos</h2>
-            <p class="muted">ITV, seguro, revisión, tacógrafo…</p>
-          </div>
-          <a href="{{ url_for('web.reminders_list') }}" class="btn small">Ver todos</a>
-          <button type="button" class="btn small" disabled title="Próximamente">Añadir vencimiento</button>
-        </div>
-        <div class="tableWrap">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Tipo</th>
-                <th>Vehículo</th>
-                <th>Fecha</th>
-                <th>Días</th>
-                <th>Estado</th>
-                <th class="right">Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for r in reminders %}
-              <tr>
-                <td><strong>{{ r.kind }}</strong></td>
-                <td>{{ r.vehicle_plate }}</td>
-                <td>{{ r.due_date }}</td>
-                <td>{{ r.days_remaining }} días</td>
-                <td>
-                  <span class="status {% if r.days_remaining <= 7 %}critical{% elif r.days_remaining <= 30 %}warn{% else %}ok{% endif %}">
-                    <i></i>{% if r.days_remaining <= 7 %}Crítico{% elif r.days_remaining <= 30 %}Aviso{% else %}OK{% endif %}
-                  </span>
-                </td>
-                <td class="right">
-                  <div class="rowActions">
-                    <a href="{{ url_for('web.reminders_list') }}" class="iconBtn" title="Ver vencimientos">▦</a>
-                    <button type="button" class="iconBtn" title="Próximamente" disabled>✓</button>
-                    <button type="button" class="iconBtn danger" title="Próximamente" disabled>🗑</button>
-                  </div>
-                </td>
-              </tr>
-              {% endfor %}
-              {% if not reminders %}
-              <tr><td colspan="6" class="tableEmpty">No hay vencimientos. <a href="{{ url_for('web.reminders_list') }}">Ver lista</a></td></tr>
-              {% endif %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="card tableCard">
+      <div class="card tableCard workshopCard">
         <div class="cardTop">
           <div>
             <h2>Últimas entradas de taller</h2>
@@ -657,6 +620,24 @@
           </table>
         </div>
       </div>
+
+      {% if timeseries_data %}
+      <div class="card chartCard">
+        <div class="cardTop">
+          <div>
+            <h2>Consumo & coste (12 semanas)</h2>
+            <p class="muted">Comparativa litros vs €</p>
+          </div>
+          <div class="legend">
+            <span class="lgItem"><i class="lgDot"></i> Litros</span>
+            <span class="lgItem"><i class="lgDot alt"></i> €</span>
+          </div>
+        </div>
+        <div class="chart">
+          <p class="chartEmpty">Sin datos de serie temporal (próximamente).</p>
+        </div>
+      </div>
+      {% endif %}
     </div>
   </section>
 </div>

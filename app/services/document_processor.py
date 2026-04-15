@@ -6,6 +6,7 @@ import logging
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
+import io
 
 from app.models import (
     Document,
@@ -14,6 +15,7 @@ from app.models import (
     ExpenseCategory,
     ExpenseEntry,
     FuelEntry,
+    MaintenanceEntry,
     db,
 )
 from app.services.extraction_service import normalize_date, validate_and_enrich
@@ -53,6 +55,38 @@ DOC_TYPE_TO_EXPENSE_CATEGORY = {
 }
 
 
+def _is_truck_vehicle(doc: Document) -> bool:
+    if not doc.vehicle:
+        return False
+    if not doc.vehicle.category:
+        # Si no está categorizado, permitimos registrar mantenimiento.
+        return True
+    category = (doc.vehicle.category or "").strip().lower()
+    if category in {"turismo", "furgoneta", "remolque"}:
+        return False
+    return category in {"camion", "tractora"} or "camion" in category
+
+
+def _is_maintenance_document_type(doc_type: str | None) -> bool:
+    return doc_type in {
+        DocumentType.INVOICE.value,
+        DocumentType.WORKSHOP_INVOICE.value,
+        DocumentType.TIRES_INVOICE.value,
+    }
+
+
+def _maintenance_concept_for_doc(doc: Document, extracted: dict | None = None) -> str:
+    extracted = extracted or {}
+    ai_concept = (extracted.get("maintenance_concept") or "").strip()
+    if ai_concept:
+        return ai_concept
+    if doc.doc_type == DocumentType.WORKSHOP_INVOICE.value:
+        return "Factura de taller"
+    if doc.doc_type == DocumentType.TIRES_INVOICE.value:
+        return "Factura de neumáticos"
+    return "Factura"
+
+
 def process_document(document_id: int) -> tuple[bool, str]:
     """
     Procesa un documento pendiente: llama a OpenAI, extrae datos, persiste.
@@ -76,18 +110,43 @@ def process_document(document_id: int) -> tuple[bool, str]:
         db.session.commit()
         return False, "Archivo no encontrado"
 
-    try:
-        image_bytes = file_path.read_bytes()
-    except Exception as e:
-        doc.status = DocumentStatus.ERROR.value
-        doc.error_message = str(e)
-        db.session.commit()
-        return False, str(e)
-
-    # Inferir mime_type
+    # Preparar bytes de imagen para la API de visión.
+    # Si es PDF, convertimos automáticamente la primera página a JPEG.
     ext = file_path.suffix.lower()
-    mime_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
-    mime_type = mime_map.get(ext, "image/jpeg")
+    if ext == ".pdf":
+        try:
+            from pdf2image import convert_from_path
+
+            # Convertir solo la primera página para rapidez
+            pages = convert_from_path(str(file_path), dpi=200, first_page=1, last_page=1)
+            if not pages:
+                raise RuntimeError("No se pudo convertir el PDF a imagen")
+            buf = io.BytesIO()
+            pages[0].save(buf, format="JPEG")
+            image_bytes = buf.getvalue()
+            mime_type = "image/jpeg"
+        except Exception as e:
+            msg = (
+                "No se pudo convertir el PDF a imagen. "
+                "Instala pdf2image y Poppler en el entorno para habilitar conversión de PDF."
+            )
+            logger.error("Error convirtiendo PDF a imagen para doc %s: %s", document_id, e)
+            doc.status = DocumentStatus.ERROR.value
+            doc.error_message = msg
+            db.session.commit()
+            return False, msg
+    else:
+        try:
+            image_bytes = file_path.read_bytes()
+        except Exception as e:
+            doc.status = DocumentStatus.ERROR.value
+            doc.error_message = str(e)
+            db.session.commit()
+            return False, str(e)
+
+        # Inferir mime_type para imágenes normales
+        mime_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png"}
+        mime_type = mime_map.get(ext, "image/jpeg")
 
     vehicle_plate = doc.vehicle.plate if doc.vehicle else None
 
@@ -339,6 +398,30 @@ def process_document(document_id: int) -> tuple[bool, str]:
             vendor=doc.vendor,
         )
         db.session.add(expense)
+        if _is_truck_vehicle(doc) and _is_maintenance_document_type(doc.doc_type):
+            resolved_concept = _maintenance_concept_for_doc(doc, extracted)
+            existing_maintenance = MaintenanceEntry.query.filter_by(document_id=doc.id).first()
+            if existing_maintenance:
+                # Si ya existía (por una carga/procesado anterior), actualizar con el concepto más fiel extraído.
+                existing_maintenance.vehicle_id = doc.vehicle_id
+                existing_maintenance.date = doc.issue_date or datetime.utcnow().date()
+                existing_maintenance.concept = resolved_concept
+                existing_maintenance.vendor = doc.vendor
+                existing_maintenance.subtotal_amount = doc.subtotal_amount
+                existing_maintenance.tax_amount = doc.tax_amount
+                existing_maintenance.total_amount = doc.total_amount
+            else:
+                maintenance = MaintenanceEntry(
+                    document_id=doc.id,
+                    vehicle_id=doc.vehicle_id,
+                    date=doc.issue_date or datetime.utcnow().date(),
+                    concept=resolved_concept,
+                    vendor=doc.vendor,
+                    subtotal_amount=doc.subtotal_amount,
+                    tax_amount=doc.tax_amount,
+                    total_amount=doc.total_amount,
+                )
+                db.session.add(maintenance)
 
     # Recordatorios
     update_reminders_from_extraction(doc, extracted)

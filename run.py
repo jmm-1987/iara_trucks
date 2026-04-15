@@ -49,6 +49,7 @@ if __name__ == "__main__":
         Document,
         ExpenseEntry,
         FuelEntry,
+        MaintenanceEntry,
         Reminder,
         TelegramSession,
         User,

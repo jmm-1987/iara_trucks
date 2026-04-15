@@ -81,6 +81,11 @@
             <label class="form-label">Proveedor / Estación</label>
             <input type="text" name="vendor" class="form-control" placeholder="Opcional">
           </div>
+          <div class="mb-3" id="maintenanceConceptWrap" style="display: none;">
+            <label class="form-label">Concepto de mantenimiento</label>
+            <input type="text" name="maintenance_concept" id="maintenanceConceptInput" class="form-control" placeholder="Ej. Cambio de aceite y filtros">
+            <small class="text-muted">Se guarda en Mantenimientos para facturas de camiones.</small>
+          </div>
           <div class="row g-2">
             <div class="col-md-4 mb-3">
               <label class="form-label">Total (€) <span class="text-danger">*</span></label>
@@ -128,10 +133,15 @@
   var docType = document.getElementById('docTypeManual');
   var fuelBlock = document.getElementById('fuelFieldsManual');
   var litersInput = document.getElementById('manualLiters');
+  var maintenanceWrap = document.getElementById('maintenanceConceptWrap');
+  var maintenanceInput = document.getElementById('maintenanceConceptInput');
   function toggleFuel() {
     var isFuel = docType && docType.value === 'fuel_ticket';
+    var isMaintenanceDoc = docType && ['invoice', 'workshop_invoice', 'tires_invoice'].indexOf(docType.value) !== -1;
     if (fuelBlock) fuelBlock.style.display = isFuel ? 'block' : 'none';
     if (litersInput) litersInput.required = isFuel;
+    if (maintenanceWrap) maintenanceWrap.style.display = isMaintenanceDoc ? 'block' : 'none';
+    if (maintenanceInput && !isMaintenanceDoc) maintenanceInput.value = '';
   }
   if (docType) docType.addEventListener('change', toggleFuel);
   toggleFuel();

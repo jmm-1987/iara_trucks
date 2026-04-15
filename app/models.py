@@ -93,6 +93,7 @@ class Vehicle(db.Model):
     fuel_entries = relationship("FuelEntry", back_populates="vehicle")
     expense_entries = relationship("ExpenseEntry", back_populates="vehicle")
     reminders = relationship("Reminder", back_populates="vehicle")
+    maintenance_entries = relationship("MaintenanceEntry", back_populates="vehicle")
 
 
 class Document(db.Model):
@@ -129,6 +130,9 @@ class Document(db.Model):
     fuel_entry = relationship("FuelEntry", back_populates="document", uselist=False)
     expense_entry = relationship(
         "ExpenseEntry", back_populates="document", uselist=False
+    )
+    maintenance_entry = relationship(
+        "MaintenanceEntry", back_populates="document", uselist=False
     )
 
 
@@ -171,6 +175,26 @@ class ExpenseEntry(db.Model):
 
     document = relationship("Document", back_populates="expense_entry")
     vehicle = relationship("Vehicle", back_populates="expense_entries")
+
+
+class MaintenanceEntry(db.Model):
+    """Registro de mantenimientos de camiones a partir de facturas."""
+
+    __tablename__ = "maintenance_entry"
+
+    id = db.Column(db.Integer, primary_key=True)
+    document_id = db.Column(db.Integer, ForeignKey("document.id"), nullable=False, unique=True)
+    vehicle_id = db.Column(db.Integer, ForeignKey("vehicle.id"), nullable=False)
+    date = db.Column(db.Date, nullable=False)
+    concept = db.Column(db.String(255), nullable=False)
+    vendor = db.Column(db.String(255), nullable=True)
+    subtotal_amount = db.Column(db.Numeric(12, 2), nullable=True)
+    tax_amount = db.Column(db.Numeric(12, 2), nullable=True)
+    total_amount = db.Column(db.Numeric(12, 2), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    document = relationship("Document", back_populates="maintenance_entry")
+    vehicle = relationship("Vehicle", back_populates="maintenance_entries")
 
 
 class Reminder(db.Model):

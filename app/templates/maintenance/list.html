@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Mantenimientos - Gestión de Flotas{% endblock %}
+{% block extra_css %}
+<style>
+  .list-panel {
+    --bg: #131c28; --stroke: rgba(255,255,255,.12); --text: #e8eef7; --muted: rgba(232,238,247,.78);
+    margin: -1.5rem; min-height: calc(100vh - 3rem); color: var(--text);
+    background: radial-gradient(900px 500px at 10% -10%, rgba(77,163,255,.2), transparent 60%), var(--bg);
+  }
+  .list-panel .topbar { padding: 18px 20px; border-bottom: 1px solid var(--stroke); }
+  .list-panel .subtitle { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .list-panel .content { padding: 16px 20px 24px; display:grid; gap: 14px; }
+  .list-panel .card { border: 1px solid var(--stroke); border-radius: 16px; background: rgba(26,38,55,.72); overflow: hidden; }
+  .list-panel .table { margin: 0; color: var(--text); }
+  .list-panel .table thead th { border-bottom: 1px solid var(--stroke); color: var(--muted); font-weight: 800; background: rgba(255,255,255,.01); }
+  .list-panel .table td { border-color: rgba(255,255,255,.05); vertical-align: middle; }
+  .list-panel .table tbody tr:hover td {
+    background: rgba(255,255,255,.015) !important;
+    color: var(--text);
+  }
+  .list-panel .table tbody tr:hover a,
+  .list-panel .table tbody tr:hover strong { color: var(--text) !important; }
+  .list-panel .form-control, .list-panel .form-select { background: rgba(0,0,0,.28); color: var(--text); border-color: var(--stroke); }
+  .list-panel .form-control:focus, .list-panel .form-select:focus { border-color: rgba(77,163,255,.4); box-shadow: none; }
+  .list-panel .page-link { background: rgba(255,255,255,.03); border-color: var(--stroke); color: var(--text); }
+  .list-panel .page-item.active .page-link { background: rgba(77,163,255,.2); border-color: rgba(77,163,255,.3); }
+</style>
+{% endblock %}
+{% block content %}
+<div class="list-panel">
+  <header class="topbar">
+    <h1 class="h4 mb-0">Mantenimientos</h1>
+    <p class="subtitle">Facturas de camiones y conceptos asociados.</p>
+  </header>
+  <section class="content">
+    <form method="get" class="card">
+      <div class="card-body">
+        <div class="row g-2">
+          <div class="col-md-3">
+            <select name="vehicle_id" class="form-select form-select-sm">
+              <option value="">Todos los camiones</option>
+              {% for v in vehicles %}
+              <option value="{{ v.id }}" {% if filters.vehicle_id == v.id %}selected{% endif %}>{{ v.plate }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <input type="text" name="concept" class="form-control form-control-sm" value="{{ filters.concept or '' }}" placeholder="Concepto">
+          </div>
+          <div class="col-md-2">
+            <input type="date" name="date_from" class="form-control form-control-sm" value="{{ filters.date_from or '' }}">
+          </div>
+          <div class="col-md-2">
+            <input type="date" name="date_to" class="form-control form-control-sm" value="{{ filters.date_to or '' }}">
+          </div>
+          <div class="col-md-2">
+            <button type="submit" class="btn btn-sm btn-outline-primary">Filtrar</button>
+          </div>
+        </div>
+      </div>
+    </form>
+
+    <div class="card">
+      <div class="card-body">
+        <table class="table align-middle">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Vehículo</th>
+              <th>Concepto</th>
+              <th>Proveedor</th>
+              <th>Base</th>
+              <th>IVA</th>
+              <th>Total</th>
+              <th>Doc</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in pagination.items %}
+            <tr>
+              <td>{{ m.date|date_format }}</td>
+              <td><strong>{{ m.vehicle.plate if m.vehicle else '-' }}</strong></td>
+              <td>{{ m.concept }}</td>
+              <td>{{ m.vendor or '-' }}</td>
+              <td>{% if m.subtotal_amount is not none %}{{ "%.2f"|format(m.subtotal_amount) }} €{% else %}-{% endif %}</td>
+              <td>{% if m.tax_amount is not none %}{{ "%.2f"|format(m.tax_amount) }} €{% else %}-{% endif %}</td>
+              <td>{{ "%.2f"|format(m.total_amount) }} €</td>
+              <td><a href="{{ url_for('web.document_detail', did=m.document_id) }}" class="btn btn-sm btn-outline-primary">Ver</a></td>
+            </tr>
+            {% endfor %}
+            {% if not pagination.items %}
+            <tr><td colspan="8" class="text-center text-secondary py-4">No hay mantenimientos registrados.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+        {% if pagination.pages > 1 %}
+        <nav>
+          <ul class="pagination pagination-sm">
+            {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+              {% if p %}
+              <li class="page-item {% if p == pagination.page %}active{% endif %}">
+                <a class="page-link" href="{{ url_for('web.maintenance_list', page=p, vehicle_id=filters.vehicle_id, date_from=filters.date_from, date_to=filters.date_to, concept=filters.concept) }}">{{ p }}</a>
+              </li>
+              {% else %}
+              <li class="page-item disabled"><span class="page-link">…</span></li>
+              {% endif %}
+            {% endfor %}
+          </ul>
+        </nav>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

@@ -39,6 +39,15 @@ class Config:
     TELEGRAM_WEBHOOK_URL = os.environ.get("TELEGRAM_WEBHOOK_URL", "")
     WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "")
 
+    # Ingesta por email (IMAP)
+    # Recomendado configurarlo en .env. Si falta, la ingesta se desactiva silenciosamente.
+    EMAIL_IMAP_HOST = os.environ.get("EMAIL_IMAP_HOST", "")
+    EMAIL_IMAP_PORT = os.environ.get("EMAIL_IMAP_PORT", "")
+    EMAIL_IMAP_SSL = os.environ.get("EMAIL_IMAP_SSL", "1")  # "1" = SSL, "0" = sin SSL
+    EMAIL_IMAP_USER = os.environ.get("EMAIL_IMAP_USER", "")
+    EMAIL_IMAP_PASSWORD = os.environ.get("EMAIL_IMAP_PASSWORD", "")
+    EMAIL_IMAP_FOLDER = os.environ.get("EMAIL_IMAP_FOLDER", "INBOX")
+
     # Logging
     LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 

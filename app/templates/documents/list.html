@@ -1,12 +1,46 @@
 {% extends "base.html" %}
 {% block title %}Documentos - Gestión de Flotas{% endblock %}
+{% block extra_css %}
+<style>
+  .list-panel {
+    --bg: #131c28; --stroke: rgba(255,255,255,.12); --text: #e8eef7; --muted: rgba(232,238,247,.78);
+    margin: -1.5rem; min-height: calc(100vh - 3rem); color: var(--text);
+    background: radial-gradient(900px 500px at 10% -10%, rgba(77,163,255,.2), transparent 60%), var(--bg);
+  }
+  .list-panel .topbar { padding: 18px 20px; border-bottom: 1px solid var(--stroke); display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap: wrap; }
+  .list-panel .subtitle { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .list-panel .btn-panel { border: 1px solid rgba(77,163,255,.25); background: rgba(77,163,255,.12); color: var(--text); padding: 10px 12px; border-radius: 12px; text-decoration: none; font-weight: 700; }
+  .list-panel .content { padding: 16px 20px 24px; display:grid; gap: 14px; }
+  .list-panel .card { border: 1px solid var(--stroke); border-radius: 16px; background: rgba(26,38,55,.72); overflow: hidden; }
+  .list-panel .table { margin: 0; color: var(--text); }
+  .list-panel .table thead th { border-bottom: 1px solid var(--stroke); color: var(--muted); font-weight: 800; background: rgba(255,255,255,.01); }
+  .list-panel .table td { border-color: rgba(255,255,255,.05); vertical-align: middle; }
+  .list-panel .table tbody tr:hover td {
+    background: rgba(255,255,255,.015) !important;
+    color: var(--text);
+  }
+  .list-panel .table tbody tr:hover a,
+  .list-panel .table tbody tr:hover strong { color: var(--text) !important; }
+  .list-panel .form-control, .list-panel .form-select { background: rgba(0,0,0,.28); color: var(--text); border-color: var(--stroke); }
+  .list-panel .form-control:focus, .list-panel .form-select:focus { border-color: rgba(77,163,255,.4); box-shadow: none; }
+  .list-panel .page-link { background: rgba(255,255,255,.03); border-color: var(--stroke); color: var(--text); }
+  .list-panel .page-item.active .page-link { background: rgba(77,163,255,.2); border-color: rgba(77,163,255,.3); }
+  .list-panel .status { padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+  .list-panel .status.ok { background: rgba(64,211,156,.18); border: 1px solid rgba(64,211,156,.35); }
+  .list-panel .status.pending { background: rgba(255,178,87,.18); border: 1px solid rgba(255,178,87,.35); }
+  .list-panel .status.error { background: rgba(255,92,112,.2); border: 1px solid rgba(255,92,112,.35); }
+</style>
+{% endblock %}
 {% block content %}
-<h1 class="h3 mb-4">Documentos</h1>
-<div class="mb-3">
-    <a href="{{ url_for('web.document_upload') }}" class="btn btn-primary">
-        <i class="bi bi-upload me-1"></i> Subir documento
-    </a>
-</div>
+<div class="list-panel">
+<header class="topbar">
+  <div>
+    <h1 class="h4 mb-0">Documentos</h1>
+    <p class="subtitle">Listado con el mismo diseño visual de portada.</p>
+  </div>
+  <a href="{{ url_for('web.document_upload') }}" class="btn-panel"><i class="bi bi-upload me-1"></i> Subir documento</a>
+</header>
+<section class="content">
 
 <form method="get" class="card mb-3">
     <div class="card-body">
@@ -50,7 +84,7 @@
 
 <div class="card">
     <div class="card-body">
-        <table class="table">
+        <table class="table align-middle">
             <thead>
                 <tr>
                     <th>ID</th>
@@ -70,11 +104,11 @@
                     <td>{{ doc_type_labels.get(d.doc_type, d.doc_type or '-') }}</td>
                     <td>
                         {% if d.status == 'processed' %}
-                        <span class="badge bg-success">Procesado</span>
+                        <span class="status ok">Procesado</span>
                         {% elif d.status == 'pending' %}
-                        <span class="badge bg-warning">Pendiente</span>
+                        <span class="status pending">Pendiente</span>
                         {% else %}
-                        <span class="badge bg-danger">Error</span>
+                        <span class="status error">Error</span>
                         {% endif %}
                     </td>
                     <td>{{ d.uploaded_at|date_format }}</td>
@@ -84,6 +118,9 @@
                     </td>
                 </tr>
                 {% endfor %}
+                {% if not pagination.items %}
+                <tr><td colspan="7" class="text-center text-secondary py-4">No hay documentos.</td></tr>
+                {% endif %}
             </tbody>
         </table>
         {% if pagination.pages > 1 %}
@@ -102,5 +139,7 @@
         </nav>
         {% endif %}
     </div>
+</div>
+ </section>
 </div>
 {% endblock %}

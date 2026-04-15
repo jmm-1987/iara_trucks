@@ -1,73 +1,92 @@
 {% extends "base.html" %}
 {% block title %}Vehículos - Gestión de Flotas{% endblock %}
+{% block extra_css %}
+<style>
+  .list-panel {
+    --bg: #131c28; --stroke: rgba(255,255,255,.12); --text: #e8eef7; --muted: rgba(232,238,247,.78);
+    margin: -1.5rem; min-height: calc(100vh - 3rem); color: var(--text);
+    background: radial-gradient(900px 500px at 10% -10%, rgba(77,163,255,.2), transparent 60%), var(--bg);
+  }
+  .list-panel .topbar { padding: 18px 20px; border-bottom: 1px solid var(--stroke); display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap: wrap; }
+  .list-panel .subtitle { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .list-panel .btn-panel { border: 1px solid rgba(77,163,255,.25); background: rgba(77,163,255,.12); color: var(--text); padding: 10px 12px; border-radius: 12px; text-decoration: none; font-weight: 700; }
+  .list-panel .content { padding: 16px 20px 24px; }
+  .list-panel .card { border: 1px solid var(--stroke); border-radius: 16px; background: rgba(26,38,55,.72); overflow: hidden; }
+  .list-panel .table { margin: 0; color: var(--text); }
+  .list-panel .table thead th { border-bottom: 1px solid var(--stroke); color: var(--muted); font-weight: 800; background: rgba(255,255,255,.01); }
+  .list-panel .table td { border-color: rgba(255,255,255,.05); vertical-align: middle; }
+  .list-panel .table tbody tr:hover td {
+    background: rgba(255,255,255,.015) !important;
+    color: var(--text);
+  }
+  .list-panel .table tbody tr:hover a,
+  .list-panel .table tbody tr:hover strong { color: var(--text) !important; }
+  .list-panel .status { padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+  .list-panel .status.ok { background: rgba(64,211,156,.18); border: 1px solid rgba(64,211,156,.35); }
+  .list-panel .status.off { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18); }
+  .list-panel .pagination { margin: 0; }
+  .list-panel .page-link { background: rgba(255,255,255,.03); border-color: var(--stroke); color: var(--text); }
+  .list-panel .page-item.active .page-link { background: rgba(77,163,255,.2); border-color: rgba(77,163,255,.3); }
+</style>
+{% endblock %}
 {% block content %}
-<h1 class="h3 mb-4">Vehículos</h1>
-<div class="mb-3">
-    <a href="{{ url_for('web.vehicle_create') }}" class="btn btn-primary">
-        <i class="bi bi-plus-circle me-1"></i> Nuevo vehículo
-    </a>
-</div>
-<div class="card">
-    <div class="card-body">
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>Matrícula</th>
-                    <th>Alias</th>
-                    <th>Marca</th>
-                    <th>Modelo</th>
-                    <th>Categoría</th>
-                    <th>Estado</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for v in pagination.items %}
-                <tr>
-                    <td><a href="{{ url_for('web.vehicle_detail', vid=v.id) }}" class="text-decoration-none"><strong>{{ v.plate }}</strong></a></td>
-                    <td>{{ v.alias or '-' }}</td>
-                    <td>{{ v.brand or '-' }}</td>
-                    <td>{{ v.model or '-' }}</td>
-                    <td>
-                        {% if v.category %}
-                        <span class="badge bg-info">{{ v.category|title }}</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if v.active %}
-                        <span class="badge bg-success">Activo</span>
-                        {% else %}
-                        <span class="badge bg-secondary">Inactivo</span>
-                        {% endif %}
-                    </td>
-                    <td>
-                        <a href="{{ url_for('web.vehicle_detail', vid=v.id) }}" class="btn btn-sm btn-outline-primary">Ver</a>
-                        <a href="{{ url_for('web.vehicle_edit', vid=v.id) }}" class="btn btn-sm btn-outline-secondary">Editar</a>
-                        {% if v.active %}
-                        <form method="post" action="{{ url_for('web.vehicle_delete', vid=v.id) }}" class="d-inline">
-                            <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('¿Desactivar vehículo?')">Desactivar</button>
-                        </form>
-                        {% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        {% if pagination.pages > 1 %}
-        <nav>
-            <ul class="pagination pagination-sm">
-                {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
-                    {% if p %}
-                    <li class="page-item {% if p == pagination.page %}active{% endif %}">
-                        <a class="page-link" href="{{ url_for('web.vehicle_list', page=p) }}">{{ p }}</a>
-                    </li>
-                    {% else %}
-                    <li class="page-item disabled"><span class="page-link">…</span></li>
-                    {% endif %}
-                {% endfor %}
-            </ul>
-        </nav>
-        {% endif %}
+<div class="list-panel">
+  <header class="topbar">
+    <div>
+      <h1 class="h4 mb-0">Vehículos</h1>
+      <p class="subtitle">Misma experiencia visual que la portada.</p>
     </div>
+    <a href="{{ url_for('web.vehicle_create') }}" class="btn-panel"><i class="bi bi-plus-circle me-1"></i> Nuevo vehículo</a>
+  </header>
+  <section class="content">
+    <div class="card">
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
+            <tr>
+              <th>Matrícula</th><th>Alias</th><th>Marca</th><th>Modelo</th><th>Categoría</th><th>Estado</th><th>Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for v in pagination.items %}
+            <tr>
+              <td><a href="{{ url_for('web.vehicle_detail', vid=v.id) }}" class="text-decoration-none text-white"><strong>{{ v.plate }}</strong></a></td>
+              <td>{{ v.alias or '-' }}</td>
+              <td>{{ v.brand or '-' }}</td>
+              <td>{{ v.model or '-' }}</td>
+              <td>{{ v.category|title if v.category else '-' }}</td>
+              <td><span class="status {{ 'ok' if v.active else 'off' }}">{{ 'Activo' if v.active else 'Inactivo' }}</span></td>
+              <td>
+                <a href="{{ url_for('web.vehicle_detail', vid=v.id) }}" class="btn btn-sm btn-outline-primary">Ver</a>
+                <a href="{{ url_for('web.vehicle_edit', vid=v.id) }}" class="btn btn-sm btn-outline-light">Editar</a>
+                {% if v.active %}
+                <form method="post" action="{{ url_for('web.vehicle_delete', vid=v.id) }}" class="d-inline">
+                  <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('¿Desactivar vehículo?')">Desactivar</button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+            {% if not pagination.items %}
+            <tr><td colspan="7" class="text-center text-secondary py-4">No hay vehículos.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+      {% if pagination.pages > 1 %}
+      <div class="p-3 border-top" style="border-color: rgba(255,255,255,.08) !important;">
+        <ul class="pagination pagination-sm">
+          {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+            {% if p %}
+            <li class="page-item {% if p == pagination.page %}active{% endif %}"><a class="page-link" href="{{ url_for('web.vehicle_list', page=p) }}">{{ p }}</a></li>
+            {% else %}
+            <li class="page-item disabled"><span class="page-link">…</span></li>
+            {% endif %}
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+    </div>
+  </section>
 </div>
 {% endblock %}

@@ -29,6 +29,7 @@ from app.models import (
     ExpenseCategory,
     ExpenseEntry,
     FuelEntry,
+    MaintenanceEntry,
     Reminder,
     ReminderKind,
     Vehicle,
@@ -59,6 +60,26 @@ DOC_TYPE_LABELS = {
     "tires_invoice": "Factura neumáticos",
     "other": "Otro",
 }
+
+
+def _is_truck_vehicle(vehicle: Vehicle | None) -> bool:
+    if not vehicle:
+        return False
+    if not vehicle.category:
+        # Si no está categorizado, no bloqueamos el registro de mantenimiento.
+        return True
+    category = (vehicle.category or "").strip().lower()
+    if category in {"turismo", "furgoneta", "remolque"}:
+        return False
+    return category in {"camion", "tractora"} or "camion" in category
+
+
+def _is_maintenance_document_type(doc_type: str | None) -> bool:
+    return doc_type in {
+        DocumentType.INVOICE.value,
+        DocumentType.WORKSHOP_INVOICE.value,
+        DocumentType.TIRES_INVOICE.value,
+    }
 
 
 def allowed_file(filename: str, allowed: set) -> bool:
@@ -295,6 +316,47 @@ def document_list():
     )
 
 
+@web_bp.route("/mantenimientos")
+def maintenance_list():
+    page = request.args.get("page", 1, type=int)
+    vehicle_id = request.args.get("vehicle_id", type=int)
+    date_from = request.args.get("date_from")
+    date_to = request.args.get("date_to")
+    concept = (request.args.get("concept") or "").strip()
+
+    q = MaintenanceEntry.query.join(Vehicle, MaintenanceEntry.vehicle_id == Vehicle.id)
+    if vehicle_id:
+        q = q.filter(MaintenanceEntry.vehicle_id == vehicle_id)
+    if concept:
+        q = q.filter(MaintenanceEntry.concept.ilike(f"%{concept}%"))
+    if date_from:
+        try:
+            q = q.filter(MaintenanceEntry.date >= date.fromisoformat(date_from))
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            q = q.filter(MaintenanceEntry.date <= date.fromisoformat(date_to))
+        except ValueError:
+            pass
+
+    pagination = q.order_by(MaintenanceEntry.date.desc(), MaintenanceEntry.id.desc()).paginate(
+        page=page, per_page=PER_PAGE
+    )
+    vehicles = Vehicle.query.filter(Vehicle.active == True).order_by(Vehicle.plate).all()
+    return render_template(
+        "maintenance/list.html",
+        pagination=pagination,
+        vehicles=vehicles,
+        filters={
+            "vehicle_id": vehicle_id,
+            "date_from": date_from,
+            "date_to": date_to,
+            "concept": concept,
+        },
+    )
+
+
 @web_bp.route("/documentos/<int:did>")
 def document_detail(did):
     doc = Document.query.get_or_404(did)
@@ -484,6 +546,7 @@ def document_upload():
                 tax_amount = total_amount - subtotal_amount
 
             vendor = (request.form.get("vendor") or "").strip() or None
+            maintenance_concept = (request.form.get("maintenance_concept") or "").strip()
             due_date = _parse_date(request.form.get("due_date"))
 
             doc = Document(
@@ -541,6 +604,20 @@ def document_upload():
                     vendor=vendor,
                 )
                 db.session.add(expense)
+                vehicle = Vehicle.query.get(vehicle_id)
+                if _is_truck_vehicle(vehicle) and _is_maintenance_document_type(doc_type):
+                    concept = maintenance_concept or DOC_TYPE_LABELS.get(doc_type, "Factura")
+                    maintenance = MaintenanceEntry(
+                        document_id=doc.id,
+                        vehicle_id=vehicle_id,
+                        date=issue_date,
+                        concept=concept,
+                        vendor=vendor,
+                        subtotal_amount=subtotal_amount,
+                        tax_amount=tax_amount,
+                        total_amount=total_amount,
+                    )
+                    db.session.add(maintenance)
 
             reminder_kind = {
                 "insurance_policy": ReminderKind.INSURANCE.value,
@@ -583,7 +660,7 @@ def document_upload():
         stem = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         ext = (filename.rsplit(".", 1)[-1] or "jpg").lower()
         if ext == "pdf":
-            flash("PDF: guardado como pendiente. El procesamiento con visión requiere imagen.", "info")
+            flash("PDF: se intentará procesar convirtiendo la primera página a imagen.", "info")
         unique_name = f"{stem}_{filename[:20]}.{ext}"
         filepath = upload_dir / unique_name
         f.save(str(filepath))

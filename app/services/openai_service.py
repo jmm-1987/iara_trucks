@@ -50,6 +50,7 @@ Devuelve ÚNICAMENTE un objeto JSON válido, sin texto adicional, con esta estru
     "price_per_liter": número o null,
     "fuel_type": "gasoil/gasolina/diesel etc o null"
   },
+  "maintenance_concept": "resumen corto del concepto real facturado (ej. cambio aceite + filtros) o null",
   "kilometers": número entero (cuentakilómetros del vehículo) o null,
   "notes": "texto libre o null",
   "confidence": número entre 0 y 1
@@ -69,6 +70,7 @@ Reglas generales:
 - Usa null para campos no encontrados
 - Fechas: extrae la fecha del documento y devuélvela en YYYY-MM-DD (si viene con hora "27-01-2026 21:05", usa solo "2026-01-27")
 - Importes con punto decimal (ej: 45.99)
+- maintenance_concept: para invoice/workshop_invoice/tires_invoice, resume en 3-8 palabras el concepto REAL de la factura (p. ej. "cambio aceite motor", "sustitución neumáticos eje delantero", "revisión frenos"), sin inventar.
 - Si el documento está en español, respeta los formatos locales pero normaliza en el JSON
 """
 
@@ -158,6 +160,7 @@ def _normalize_response(data: dict) -> dict:
         "date_due": data.get("date_due"),
         "amounts": data.get("amounts") or {},
         "fuel": data.get("fuel") or {},
+        "maintenance_concept": data.get("maintenance_concept"),
         "kilometers": data.get("kilometers") or data.get("odometer_km"),
         "notes": data.get("notes"),
         "confidence": float(data.get("confidence", 0)),
