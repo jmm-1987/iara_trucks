@@ -278,6 +278,7 @@ def document_list():
     vehicle_id = request.args.get("vehicle_id", type=int)
     date_from = request.args.get("date_from")
     date_to = request.args.get("date_to")
+    q_text = (request.args.get("q") or "").strip()
 
     q = Document.query
     if doc_type:
@@ -296,6 +297,11 @@ def document_list():
             q = q.filter(Document.uploaded_at <= datetime.fromisoformat(date_to))
         except ValueError:
             pass
+    if q_text:
+        like = f"%{q_text}%"
+        q = q.filter(
+            (Document.vendor.ilike(like)) | (Document.extracted_json.ilike(like))
+        )
 
     pagination = q.order_by(Document.uploaded_at.desc()).paginate(
         page=page, per_page=PER_PAGE
@@ -312,6 +318,7 @@ def document_list():
             "vehicle_id": vehicle_id,
             "date_from": date_from,
             "date_to": date_to,
+            "q": q_text,
         },
     )
 
@@ -323,12 +330,19 @@ def maintenance_list():
     date_from = request.args.get("date_from")
     date_to = request.args.get("date_to")
     concept = (request.args.get("concept") or "").strip()
+    kind = (request.args.get("kind") or "").strip()
 
-    q = MaintenanceEntry.query.join(Vehicle, MaintenanceEntry.vehicle_id == Vehicle.id)
+    q = (
+        MaintenanceEntry.query
+        .join(Vehicle, MaintenanceEntry.vehicle_id == Vehicle.id)
+        .join(Document, MaintenanceEntry.document_id == Document.id)
+    )
     if vehicle_id:
         q = q.filter(MaintenanceEntry.vehicle_id == vehicle_id)
     if concept:
         q = q.filter(MaintenanceEntry.concept.ilike(f"%{concept}%"))
+    if kind == "workshop":
+        q = q.filter(Document.doc_type == DocumentType.WORKSHOP_INVOICE.value)
     if date_from:
         try:
             q = q.filter(MaintenanceEntry.date >= date.fromisoformat(date_from))
@@ -353,6 +367,7 @@ def maintenance_list():
             "date_from": date_from,
             "date_to": date_to,
             "concept": concept,
+            "kind": kind,
         },
     )
 
@@ -691,6 +706,7 @@ def reports():
     vehicle_id = request.args.get("vehicle_id", type=int)
     date_from = request.args.get("date_from")
     date_to = request.args.get("date_to")
+    focus = (request.args.get("focus") or "").strip().lower()
 
     if not date_from:
         date_from = (date.today() - timedelta(days=365)).isoformat()
@@ -732,6 +748,7 @@ def reports():
         expense_data=expense_data,
         reminders_data=reminders_data,
         vehicles=vehicles,
+        focus=focus,
         filters={"vehicle_id": vehicle_id, "date_from": date_from, "date_to": date_to},
     )
 

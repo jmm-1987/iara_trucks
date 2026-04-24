@@ -8,33 +8,70 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
     <style>
         :root {
-            --sidebar-width: 220px;
-            --app-bg: #131c28;
-            --app-bg-soft: #172232;
-            --app-card: rgba(26, 38, 55, 0.72);
-            --app-stroke: rgba(255,255,255,.12);
-            --app-text: #e8eef7;
-            --app-muted: rgba(232,238,247,.78);
-            --app-accent: #4da3ff;
+            --app-bg: #f4f8fc;
+            --app-bg-soft: #ffffff;
+            --app-card: #ffffff;
+            --app-stroke: #d8e3f0;
+            --app-text: #111827;
+            --app-muted: #5f6b7a;
+            --app-accent: #123a63;
+            --app-green: #138a5a;
+            --app-nav-bg: #123a63;
+            --app-nav-text: #eaf2ff;
         }
         body {
             color: var(--app-text);
-            background:
-                radial-gradient(1200px 700px at 20% -10%, rgba(77,163,255,.22), transparent 60%),
-                radial-gradient(900px 550px at 100% 0%, rgba(180,140,255,.16), transparent 60%),
-                var(--app-bg);
+            background: linear-gradient(180deg, #f9fcff 0%, #eef4fb 100%);
         }
-        .sidebar { min-height: 100vh; background: #1a1d23; }
-        .sidebar-logo-wrap { display: flex; justify-content: center; align-items: center; padding: 0.75rem 0.5rem; }
-        .sidebar-logo { height: 52px; width: auto; max-width: 200px; object-fit: contain; display: block; }
-        /* En portada (dashboard) la marca es más discreta */
-        body.portada .sidebar-logo-wrap { padding: 0.5rem 0.35rem; }
-        body.portada .sidebar-logo { height: 32px; max-width: 120px; opacity: 0.75; }
-        .sidebar .nav-link { color: rgba(255,255,255,.8); padding: .6rem 1rem; }
-        .sidebar .nav-link:hover { color: #fff; background: rgba(255,255,255,.1); }
-        .sidebar .nav-link.active { color: var(--app-accent); }
+        .top-nav {
+            background: var(--app-nav-bg);
+            color: var(--app-nav-text);
+            border-bottom: 1px solid rgba(255,255,255,.18);
+            padding: .55rem 1rem;
+        }
+        .top-nav .brand-logo { height: 34px; width: auto; object-fit: contain; }
+        .top-nav .nav-link {
+            color: var(--app-nav-text);
+            font-weight: 600;
+            padding: .45rem .7rem;
+            border-radius: 8px;
+            opacity: .9;
+        }
+        .top-nav .nav-link:hover,
+        .top-nav .nav-link.active {
+            color: #fff;
+            opacity: 1;
+            background: rgba(255,255,255,.15);
+        }
+        .quick-strip {
+            background: #fff;
+            border-bottom: 1px solid var(--app-stroke);
+            padding: .55rem 1rem;
+            display: grid;
+            grid-template-columns: repeat(5, minmax(120px, 1fr));
+            gap: 8px;
+        }
+        .quick-tile {
+            border: 1px solid var(--app-stroke);
+            border-radius: 10px;
+            padding: .5rem .65rem;
+            text-decoration: none;
+            color: var(--app-text);
+            background: #fff;
+            display: flex;
+            align-items: center;
+            gap: .45rem;
+            font-size: .85rem;
+            font-weight: 600;
+        }
+        .quick-tile i { color: var(--app-accent); }
+        .quick-tile:hover {
+            border-color: #bdd1e6;
+            background: #f6fbff;
+            color: #0d1b2a;
+        }
         main {
-            padding: 1.5rem;
+            padding: 1rem;
             background: transparent;
             color: var(--app-text);
         }
@@ -44,19 +81,20 @@
             border: 1px solid var(--app-stroke);
             background: var(--app-card);
             color: var(--app-text);
-            border-radius: 16px;
+            border-radius: 12px;
             overflow: hidden;
+            box-shadow: 0 3px 14px rgba(18, 58, 99, .06);
         }
         .card-header {
             border-bottom: 1px solid var(--app-stroke);
-            background: rgba(255,255,255,.03);
+            background: #f7fbff;
             color: var(--app-text);
             font-weight: 700;
         }
         .table { color: var(--app-text); }
         .table > :not(caption) > * > * {
             background-color: transparent;
-            border-bottom-color: rgba(255,255,255,.07);
+            border-bottom-color: #e7eff8;
             color: var(--app-text);
         }
         .table thead th {
@@ -64,47 +102,48 @@
             border-bottom-color: var(--app-stroke);
         }
         .table tbody tr:hover > * {
-            background-color: rgba(255,255,255,.015) !important;
+            background-color: #f5faff !important;
         }
         .form-control, .form-select {
-            background: rgba(0,0,0,.28);
+            background: #fff;
             border-color: var(--app-stroke);
             color: var(--app-text);
         }
         .form-control:focus, .form-select:focus {
-            background: rgba(0,0,0,.35);
+            background: #fff;
             color: var(--app-text);
-            border-color: rgba(77,163,255,.4);
+            border-color: #7da9d1;
             box-shadow: none;
         }
-        .form-control::placeholder { color: rgba(232,238,247,.6); }
+        .form-control::placeholder { color: #9aa8b7; }
         .btn-secondary, .btn-outline-secondary {
-            border-color: var(--app-stroke);
-            background: rgba(255,255,255,.05);
-            color: var(--app-text);
+            border-color: #c8d7e7;
+            background: #fff;
+            color: #244264;
         }
         .btn-secondary:hover, .btn-outline-secondary:hover {
-            background: rgba(255,255,255,.1);
-            color: var(--app-text);
-            border-color: rgba(255,255,255,.2);
+            background: #f5faff;
+            color: #123a63;
+            border-color: #9ebad8;
         }
         .bg-light {
-            background: rgba(0,0,0,.22) !important;
+            background: #f4f8fc !important;
             color: var(--app-text) !important;
         }
         .modal-content {
-            background: #172232;
+            background: #ffffff;
             border: 1px solid var(--app-stroke);
             color: var(--app-text);
         }
         .pagination .page-link {
-            background: rgba(255,255,255,.03);
+            background: #fff;
             border-color: var(--app-stroke);
-            color: var(--app-text);
+            color: #1f3f64;
         }
         .pagination .page-item.active .page-link {
-            background: rgba(77,163,255,.2);
-            border-color: rgba(77,163,255,.3);
+            background: #123a63;
+            border-color: #123a63;
+            color: #fff;
         }
         .kpi-card { border-left: 4px solid #0d6efd; }
         .vehicle-card { border: 1px solid var(--app-stroke); }
@@ -112,45 +151,55 @@
     </style>
     {% block extra_css %}{% endblock %}
 </head>
-<body class="d-flex{% if request.endpoint == 'web.index' %} portada{% endif %}">
-    <nav class="sidebar flex-shrink-0" style="width: var(--sidebar-width);">
-        <div class="sidebar-logo-wrap text-white">
-            <img src="{{ url_for('static', filename='logo.png') }}" alt="Flotas" class="sidebar-logo" />
+<body>
+    <nav class="top-nav">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div class="d-flex align-items-center gap-3">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="Flotas" class="brand-logo" />
+                <strong class="text-white">Gestión de Flotas</strong>
+            </div>
+            <ul class="nav">
+                <li class="nav-item">
+                    <a class="nav-link {% if request.endpoint == 'web.index' %}active{% endif %}" href="{{ url_for('web.index') }}">
+                        <i class="bi bi-speedometer2 me-1"></i>Dashboard
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if 'vehicle' in (request.endpoint or '') %}active{% endif %}" href="{{ url_for('web.vehicle_list') }}">
+                        <i class="bi bi-car-front me-1"></i>Vehículos
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if 'document' in (request.endpoint or '') %}active{% endif %}" href="{{ url_for('web.document_list') }}">
+                        <i class="bi bi-file-earmark-image me-1"></i>Documentos
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if 'maintenance' in (request.endpoint or '') %}active{% endif %}" href="{{ url_for('web.maintenance_list') }}">
+                        <i class="bi bi-wrench-adjustable-circle me-1"></i>Mantenimientos
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if 'report' in (request.endpoint or '') %}active{% endif %}" href="{{ url_for('web.reports') }}">
+                        <i class="bi bi-graph-up me-1"></i>Reportes
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {% if 'reminder' in (request.endpoint or '') %}active{% endif %}" href="{{ url_for('web.reminders_list') }}">
+                        <i class="bi bi-bell me-1"></i>Vencimientos
+                    </a>
+                </li>
+            </ul>
         </div>
-        <ul class="nav flex-column">
-            <li class="nav-item">
-                <a class="nav-link {% if request.endpoint == 'web.index' %}active{% endif %}" href="{{ url_for('web.index') }}">
-                    <i class="bi bi-speedometer2 me-2"></i>Dashboard
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link {% if 'vehicle' in request.endpoint %}active{% endif %}" href="{{ url_for('web.vehicle_list') }}">
-                    <i class="bi bi-car-front me-2"></i>Vehículos
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link {% if 'document' in request.endpoint %}active{% endif %}" href="{{ url_for('web.document_list') }}">
-                    <i class="bi bi-file-earmark-image me-2"></i>Documentos
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link {% if 'maintenance' in request.endpoint %}active{% endif %}" href="{{ url_for('web.maintenance_list') }}">
-                    <i class="bi bi-wrench-adjustable-circle me-2"></i>Mantenimientos
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link {% if 'report' in request.endpoint %}active{% endif %}" href="{{ url_for('web.reports') }}">
-                    <i class="bi bi-graph-up me-2"></i>Reportes
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link {% if 'reminder' in request.endpoint %}active{% endif %}" href="{{ url_for('web.reminders_list') }}">
-                    <i class="bi bi-bell me-2"></i>Vencimientos
-                </a>
-            </li>
-        </ul>
     </nav>
-    <main class="flex-grow-1 overflow-auto">
+    <div class="quick-strip">
+        <a class="quick-tile" href="{{ url_for('web.document_list', doc_type='itv') }}"><i class="bi bi-shield-check"></i>ITV</a>
+        <a class="quick-tile" href="{{ url_for('web.document_list', doc_type='insurance_policy') }}"><i class="bi bi-file-earmark-lock2"></i>Seguros</a>
+        <a class="quick-tile" href="{{ url_for('web.document_list', q='circulacion') }}"><i class="bi bi-sign-turn-right"></i>Rodajes</a>
+        <a class="quick-tile" href="{{ url_for('web.maintenance_list', kind='workshop') }}"><i class="bi bi-tools"></i>Mantenimientos</a>
+        <a class="quick-tile" href="{{ url_for('web.reports', focus='consumos') }}"><i class="bi bi-fuel-pump"></i>Consumos</a>
+    </div>
+    <main class="overflow-auto">
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, msg in messages %}

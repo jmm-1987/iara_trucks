@@ -3,30 +3,30 @@
 {% block extra_css %}
 <style>
   .list-panel {
-    --bg: #131c28; --stroke: rgba(255,255,255,.12); --text: #e8eef7; --muted: rgba(232,238,247,.78);
+    --bg: #f4f8fc; --stroke: #d8e3f0; --text: #111827; --muted: #64748b;
     margin: -1.5rem; min-height: calc(100vh - 3rem); color: var(--text);
-    background: radial-gradient(900px 500px at 10% -10%, rgba(77,163,255,.2), transparent 60%), var(--bg);
+    background: linear-gradient(180deg, #f9fcff 0%, #eef4fb 100%);
   }
   .list-panel .topbar { padding: 18px 20px; border-bottom: 1px solid var(--stroke); display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap: wrap; }
   .list-panel .subtitle { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
-  .list-panel .btn-panel { border: 1px solid rgba(77,163,255,.25); background: rgba(77,163,255,.12); color: var(--text); padding: 10px 12px; border-radius: 12px; text-decoration: none; font-weight: 700; }
+  .list-panel .btn-panel { border: 1px solid #c5d7ea; background: #eaf3ff; color: #123a63; padding: 10px 12px; border-radius: 12px; text-decoration: none; font-weight: 700; }
   .list-panel .content { padding: 16px 20px 24px; }
-  .list-panel .card { border: 1px solid var(--stroke); border-radius: 16px; background: rgba(26,38,55,.72); overflow: hidden; }
+  .list-panel .card { border: 1px solid var(--stroke); border-radius: 16px; background: #fff; overflow: hidden; }
   .list-panel .table { margin: 0; color: var(--text); }
-  .list-panel .table thead th { border-bottom: 1px solid var(--stroke); color: var(--muted); font-weight: 800; background: rgba(255,255,255,.01); }
-  .list-panel .table td { border-color: rgba(255,255,255,.05); vertical-align: middle; }
+  .list-panel .table thead th { border-bottom: 1px solid var(--stroke); color: var(--muted); font-weight: 800; background: #f6fbff; }
+  .list-panel .table td { border-color: #e6eef7; vertical-align: middle; }
   .list-panel .table tbody tr:hover td {
-    background: rgba(255,255,255,.015) !important;
+    background: #f5faff !important;
     color: var(--text);
   }
   .list-panel .table tbody tr:hover a,
   .list-panel .table tbody tr:hover strong { color: var(--text) !important; }
   .list-panel .status { padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
   .list-panel .status.ok { background: rgba(64,211,156,.18); border: 1px solid rgba(64,211,156,.35); }
-  .list-panel .status.off { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18); }
+  .list-panel .status.off { background: #eef2f7; border: 1px solid #d8e3f0; }
   .list-panel .pagination { margin: 0; }
-  .list-panel .page-link { background: rgba(255,255,255,.03); border-color: var(--stroke); color: var(--text); }
-  .list-panel .page-item.active .page-link { background: rgba(77,163,255,.2); border-color: rgba(77,163,255,.3); }
+  .list-panel .page-link { background: #fff; border-color: var(--stroke); color: #123a63; }
+  .list-panel .page-item.active .page-link { background: #123a63; border-color: #123a63; color: #fff; }
 </style>
 {% endblock %}
 {% block content %}
@@ -50,7 +50,7 @@
           <tbody>
             {% for v in pagination.items %}
             <tr>
-              <td><a href="{{ url_for('web.vehicle_detail', vid=v.id) }}" class="text-decoration-none text-white"><strong>{{ v.plate }}</strong></a></td>
+              <td><a href="{{ url_for('web.vehicle_detail', vid=v.id) }}" class="text-decoration-none"><strong>{{ v.plate }}</strong></a></td>
               <td>{{ v.alias or '-' }}</td>
               <td>{{ v.brand or '-' }}</td>
               <td>{{ v.model or '-' }}</td>

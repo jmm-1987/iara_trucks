@@ -4,7 +4,7 @@
 {% block extra_css %}
 <style>
 /* Contenedor reportes - estilo muestra */
-.reports-page { --report-bg: #252525; --report-border: #3d3d3d; --report-text: #e0e0e0; --report-input: #2d2d2d; }
+.reports-page { --report-bg: #ffffff; --report-border: #d8e3f0; --report-text: #111827; --report-input: #f6fbff; }
 .reports-page .filters-header { width: 100%; padding: 0 0 1rem 0; margin: 0; overflow: visible; }
 .reports-page .dock-container {
     display: flex; justify-content: space-evenly; align-items: center; gap: 0.5rem;
@@ -21,12 +21,12 @@
 }
 .reports-page .dock-tooltip {
     position: absolute; bottom: -35px; left: 50%; transform: translateX(-50%);
-    background: rgba(0,0,0,0.85); color: white; padding: 0.4rem 0.8rem; border-radius: 6px;
+    background: #123a63; color: white; padding: 0.4rem 0.8rem; border-radius: 6px;
     font-size: 0.75rem; white-space: nowrap; opacity: 0; visibility: hidden; transition: all 0.3s ease; pointer-events: none; z-index: 1000;
 }
 .reports-page .dock-button:hover .dock-tooltip { opacity: 1; visibility: visible; bottom: -40px; }
 .reports-page .dock-button:hover {
-    transform: translateY(-6px) scale(1.1); background: linear-gradient(135deg, rgba(76,175,80,0.3), rgba(255,152,0,0.2));
+    transform: translateY(-6px) scale(1.1); background: linear-gradient(135deg, rgba(18,58,99,0.2), rgba(19,138,90,0.18));
     box-shadow: 0 8px 25px rgba(76,175,80,0.3);
 }
 .reports-page .dock-icon { width: 18px; height: 18px; stroke-width: 2; }
@@ -76,7 +76,7 @@
 }
 
 /* Cards y tablas estilo muestra */
-.reports-page .report-title { font-size: 1.1rem; font-weight: 600; color: var(--report-text); margin-bottom: 1.25rem; }
+.reports-page .report-title { font-size: 1.1rem; font-weight: 700; color: #123a63; margin-bottom: 1.25rem; }
 .reports-page .report-card {
     background: var(--report-bg); border: 1px solid var(--report-border); border-radius: 16px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.2); margin-bottom: 1.25rem; overflow: hidden;
@@ -105,7 +105,7 @@
 
 {% block content %}
 <div class="reports-page">
-    <h1 class="report-title">Reportes</h1>
+    <h1 class="report-title">{% if focus == 'consumos' %}Consumos (tickets de gasoil){% else %}Reportes{% endif %}</h1>
 
     <div class="filters-header">
         <form method="get" id="reportFilterForm" class="filter-form">
@@ -187,14 +187,17 @@
         <a href="{{ url_for('web.report_export', report_type='fuel', vehicle_id=filters.vehicle_id, date_from=filters.date_from, date_to=filters.date_to) }}">
             <i class="bi bi-file-earmark-spreadsheet"></i> Exportar combustible CSV
         </a>
+        {% if focus != 'consumos' %}
         <a href="{{ url_for('web.report_export', report_type='expenses', vehicle_id=filters.vehicle_id, date_from=filters.date_from, date_to=filters.date_to) }}">
             <i class="bi bi-file-earmark-spreadsheet"></i> Exportar gastos CSV
         </a>
         <a href="{{ url_for('web.report_export', report_type='reminders', vehicle_id=filters.vehicle_id) }}">
             <i class="bi bi-file-earmark-spreadsheet"></i> Exportar vencimientos CSV
         </a>
+        {% endif %}
     </div>
 
+    {% if focus != 'consumos' %}
     <div class="row">
         <div class="col-lg-6">
             <div class="report-card">
@@ -248,6 +251,32 @@
             </div>
         </div>
     </div>
+    {% else %}
+    <div class="report-card">
+        <div class="report-card-header">Consumo combustible (litros y coste por mes)</div>
+        <div class="report-card-body">
+            {% if fuel_data %}
+            <table class="report-table">
+                <thead><tr><th>Vehículo</th><th>Mes</th><th>Litros</th><th>Base</th><th>IVA</th><th>Total</th></tr></thead>
+                <tbody>
+                    {% for r in fuel_data %}
+                    <tr>
+                        <td>{{ r.vehicle_plate }}</td>
+                        <td>{{ r.month }}</td>
+                        <td>{{ "%.1f"|format(r.total_liters or 0) }}</td>
+                        <td>{% if r.subtotal_amount %}{{ "%.2f"|format(r.subtotal_amount) }} €{% else %}-{% endif %}</td>
+                        <td>{% if r.tax_amount %}{{ "%.2f"|format(r.tax_amount) }} €{% else %}-{% endif %}</td>
+                        <td>{{ "%.2f"|format(r.total_amount or 0) }} €</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p class="report-empty">Sin datos de combustible.</p>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
 
     <div class="report-card">
         <div class="report-card-header">Tickets combustible (detalle con kilómetros)</div>
@@ -285,6 +314,7 @@
         </div>
     </div>
 
+    {% if focus != 'consumos' %}
     <div class="report-card">
         <div class="report-card-header">Vencimientos</div>
         <div class="report-card-body">
@@ -317,6 +347,7 @@
             {% endif %}
         </div>
     </div>
+    {% endif %}
 </div>
 
 <script>

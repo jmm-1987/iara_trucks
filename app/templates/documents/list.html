@@ -3,28 +3,28 @@
 {% block extra_css %}
 <style>
   .list-panel {
-    --bg: #131c28; --stroke: rgba(255,255,255,.12); --text: #e8eef7; --muted: rgba(232,238,247,.78);
+    --bg: #f4f8fc; --stroke: #d8e3f0; --text: #111827; --muted: #64748b;
     margin: -1.5rem; min-height: calc(100vh - 3rem); color: var(--text);
-    background: radial-gradient(900px 500px at 10% -10%, rgba(77,163,255,.2), transparent 60%), var(--bg);
+    background: linear-gradient(180deg, #f9fcff 0%, #eef4fb 100%);
   }
   .list-panel .topbar { padding: 18px 20px; border-bottom: 1px solid var(--stroke); display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap: wrap; }
   .list-panel .subtitle { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
-  .list-panel .btn-panel { border: 1px solid rgba(77,163,255,.25); background: rgba(77,163,255,.12); color: var(--text); padding: 10px 12px; border-radius: 12px; text-decoration: none; font-weight: 700; }
+  .list-panel .btn-panel { border: 1px solid #c5d7ea; background: #eaf3ff; color: #123a63; padding: 10px 12px; border-radius: 12px; text-decoration: none; font-weight: 700; }
   .list-panel .content { padding: 16px 20px 24px; display:grid; gap: 14px; }
-  .list-panel .card { border: 1px solid var(--stroke); border-radius: 16px; background: rgba(26,38,55,.72); overflow: hidden; }
+  .list-panel .card { border: 1px solid var(--stroke); border-radius: 16px; background: #fff; overflow: hidden; }
   .list-panel .table { margin: 0; color: var(--text); }
-  .list-panel .table thead th { border-bottom: 1px solid var(--stroke); color: var(--muted); font-weight: 800; background: rgba(255,255,255,.01); }
-  .list-panel .table td { border-color: rgba(255,255,255,.05); vertical-align: middle; }
+  .list-panel .table thead th { border-bottom: 1px solid var(--stroke); color: var(--muted); font-weight: 800; background: #f6fbff; }
+  .list-panel .table td { border-color: #e6eef7; vertical-align: middle; }
   .list-panel .table tbody tr:hover td {
-    background: rgba(255,255,255,.015) !important;
+    background: #f5faff !important;
     color: var(--text);
   }
   .list-panel .table tbody tr:hover a,
   .list-panel .table tbody tr:hover strong { color: var(--text) !important; }
-  .list-panel .form-control, .list-panel .form-select { background: rgba(0,0,0,.28); color: var(--text); border-color: var(--stroke); }
+  .list-panel .form-control, .list-panel .form-select { background: #fff; color: var(--text); border-color: var(--stroke); }
   .list-panel .form-control:focus, .list-panel .form-select:focus { border-color: rgba(77,163,255,.4); box-shadow: none; }
-  .list-panel .page-link { background: rgba(255,255,255,.03); border-color: var(--stroke); color: var(--text); }
-  .list-panel .page-item.active .page-link { background: rgba(77,163,255,.2); border-color: rgba(77,163,255,.3); }
+  .list-panel .page-link { background: #fff; border-color: var(--stroke); color: #123a63; }
+  .list-panel .page-item.active .page-link { background: #123a63; border-color: #123a63; color: #fff; }
   .list-panel .status { padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
   .list-panel .status.ok { background: rgba(64,211,156,.18); border: 1px solid rgba(64,211,156,.35); }
   .list-panel .status.pending { background: rgba(255,178,87,.18); border: 1px solid rgba(255,178,87,.35); }
@@ -70,12 +70,15 @@
                 </select>
             </div>
             <div class="col-md-2">
+                <input type="text" name="q" class="form-control form-control-sm" value="{{ filters.q or '' }}" placeholder="Buscar concepto...">
+            </div>
+            <div class="col-md-2">
                 <input type="date" name="date_from" class="form-control form-control-sm" value="{{ filters.date_from or '' }}" placeholder="Desde">
             </div>
             <div class="col-md-2">
                 <input type="date" name="date_to" class="form-control form-control-sm" value="{{ filters.date_to or '' }}" placeholder="Hasta">
             </div>
-            <div class="col-md-2">
+            <div class="col-md-1">
                 <button type="submit" class="btn btn-sm btn-outline-primary">Filtrar</button>
             </div>
         </div>
@@ -91,6 +94,7 @@
                     <th>Vehículo</th>
                     <th>Tipo</th>
                     <th>Estado</th>
+                    <th>Vencimiento</th>
                     <th>Fecha</th>
                     <th>Importe</th>
                     <th></th>
@@ -111,6 +115,13 @@
                         <span class="status error">Error</span>
                         {% endif %}
                     </td>
+                    <td>
+                        {% if d.due_date %}
+                        <strong>{{ d.due_date|date_format }}</strong>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
                     <td>{{ d.uploaded_at|date_format }}</td>
                     <td>{% if d.total_amount %}{{ "%.2f"|format(d.total_amount) }} {{ d.currency or 'EUR' }}{% else %}-{% endif %}</td>
                     <td>
@@ -119,7 +130,7 @@
                 </tr>
                 {% endfor %}
                 {% if not pagination.items %}
-                <tr><td colspan="7" class="text-center text-secondary py-4">No hay documentos.</td></tr>
+                <tr><td colspan="8" class="text-center text-secondary py-4">No hay documentos.</td></tr>
                 {% endif %}
             </tbody>
         </table>
@@ -129,7 +140,7 @@
                 {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
                     {% if p %}
                     <li class="page-item {% if p == pagination.page %}active{% endif %}">
-                        <a class="page-link" href="{{ url_for('web.document_list', page=p, doc_type=filters.doc_type, status=filters.status, vehicle_id=filters.vehicle_id, date_from=filters.date_from, date_to=filters.date_to) }}">{{ p }}</a>
+                        <a class="page-link" href="{{ url_for('web.document_list', page=p, doc_type=filters.doc_type, status=filters.status, vehicle_id=filters.vehicle_id, date_from=filters.date_from, date_to=filters.date_to, q=filters.q) }}">{{ p }}</a>
                     </li>
                     {% else %}
                     <li class="page-item disabled"><span class="page-link">…</span></li>
