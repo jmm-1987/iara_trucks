@@ -207,6 +207,11 @@ class Reminder(db.Model):
     kind = db.Column(db.String(50), nullable=False)  # ReminderKind value
     due_date = db.Column(db.Date, nullable=False)
     status = db.Column(db.String(20), default="active")  # active, notified, expired
+    title = db.Column(db.String(255), nullable=True)
+    notes = db.Column(Text, nullable=True)
+    notify_days_before = db.Column(db.Integer, nullable=True)
+    last_notified_days_remaining = db.Column(db.Integer, nullable=True)
+    last_notified_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     document_id = db.Column(db.Integer, ForeignKey("document.id"), nullable=True)
 
@@ -230,3 +235,13 @@ class TelegramSession(db.Model):
 
     user = relationship("User", back_populates="sessions")
     current_vehicle = relationship("Vehicle", foreign_keys=[current_vehicle_id])
+
+
+class AppSetting(db.Model):
+    """Configuración global simple (clave/valor)."""
+
+    __tablename__ = "app_setting"
+
+    key = db.Column(db.String(100), primary_key=True)
+    value = db.Column(db.String(255), nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

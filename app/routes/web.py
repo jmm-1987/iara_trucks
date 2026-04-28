@@ -36,6 +36,7 @@ from app.models import (
     db,
 )
 from app.services.document_processor import process_document
+from app.services.reminders_service import get_reminder_days_before, set_reminder_days_before
 from app.services.reporting_service import (
     calculate_fuel_consumption_stats,
     dashboard_kpis,
@@ -564,10 +565,26 @@ def document_upload():
             maintenance_concept = (request.form.get("maintenance_concept") or "").strip()
             due_date = _parse_date(request.form.get("due_date"))
 
+            manual_file = request.files.get("manual_file")
+            stored_file_path = "manual"
+            if manual_file and manual_file.filename:
+                allowed = {"jpg", "jpeg", "png", "pdf"}
+                if not allowed_file(manual_file.filename, allowed):
+                    flash("El archivo manual debe ser jpg, png o pdf.", "danger")
+                    return redirect(url_for("web.document_upload"))
+                raw_name = secure_filename(manual_file.filename) or "manual"
+                ext = (raw_name.rsplit(".", 1)[-1] or "jpg").lower()
+                upload_dir = Path(current_app.config["UPLOAD_FOLDER"])
+                upload_dir.mkdir(parents=True, exist_ok=True)
+                unique_name = f"manual_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{raw_name[:20]}.{ext}"
+                target = upload_dir / unique_name
+                manual_file.save(str(target))
+                stored_file_path = unique_name
+
             doc = Document(
                 vehicle_id=vehicle_id,
                 doc_type=doc_type,
-                file_path="manual",
+                file_path=stored_file_path,
                 status=DocumentStatus.PROCESSED.value,
                 issue_date=issue_date,
                 due_date=due_date,
@@ -784,9 +801,78 @@ def reminders_list():
     if vehicle_id:
         data = [r for r in data if r["vehicle_id"] == vehicle_id]
     vehicles = Vehicle.query.filter(Vehicle.active == True).all()
+    reminder_days_before = get_reminder_days_before()
     return render_template(
         "reminders/list.html",
         reminders=data,
         vehicles=vehicles,
         vehicle_id=vehicle_id,
+        reminder_days_before=reminder_days_before,
+        reminder_kind_labels={
+            ReminderKind.INSURANCE.value: "Seguro",
+            ReminderKind.ITV.value: "ITV",
+            ReminderKind.TACHOGRAPH.value: "Tacógrafo",
+        },
     )
+
+
+@web_bp.route("/recordatorios/configuracion", methods=["POST"])
+def reminders_update_config():
+    raw_days = (request.form.get("reminder_days_before") or "").strip()
+    try:
+        days = int(raw_days)
+    except ValueError:
+        flash("El número de días debe ser un entero.", "danger")
+        return redirect(url_for("web.reminders_list"))
+    saved = set_reminder_days_before(days)
+    flash(f"Configuración guardada: avisar con {saved} días de antelación.", "success")
+    return redirect(url_for("web.reminders_list"))
+
+
+@web_bp.route("/recordatorios/nuevo", methods=["POST"])
+def reminders_create_manual():
+    vehicle_id = request.form.get("vehicle_id", type=int)
+    if not vehicle_id:
+        flash("Selecciona un vehículo para crear el aviso.", "danger")
+        return redirect(url_for("web.reminders_list"))
+
+    due_date_raw = (request.form.get("due_date") or "").strip()
+    due_date = _parse_date(due_date_raw)
+    if not due_date:
+        flash("La fecha de vencimiento es obligatoria.", "danger")
+        return redirect(url_for("web.reminders_list"))
+
+    kind = (request.form.get("kind") or "").strip() or "manual"
+    title = (request.form.get("title") or "").strip() or None
+    notes = (request.form.get("notes") or "").strip() or None
+    notify_days_raw = (request.form.get("notify_days_before") or "").strip()
+    notify_days = get_reminder_days_before()
+    if notify_days_raw:
+        try:
+            notify_days = max(0, min(int(notify_days_raw), 365))
+        except ValueError:
+            flash("Los días de aviso deben ser un número entero.", "danger")
+            return redirect(url_for("web.reminders_list"))
+
+    reminder = Reminder(
+        vehicle_id=vehicle_id,
+        kind=kind,
+        title=title,
+        notes=notes,
+        due_date=due_date,
+        notify_days_before=notify_days,
+        status="active",
+    )
+    db.session.add(reminder)
+    db.session.commit()
+    flash("Aviso manual creado correctamente.", "success")
+    return redirect(url_for("web.reminders_list"))
+
+
+@web_bp.route("/recordatorios/<int:rid>/eliminar", methods=["POST"])
+def reminders_delete(rid):
+    reminder = Reminder.query.get_or_404(rid)
+    reminder.status = "expired"
+    db.session.commit()
+    flash("Aviso eliminado.", "info")
+    return redirect(url_for("web.reminders_list"))

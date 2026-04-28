@@ -3,6 +3,70 @@
 {% block content %}
 <h1 class="h3 mb-4">Vencimientos</h1>
 
+<div class="row g-3 mb-3">
+    <div class="col-lg-5">
+        <div class="card">
+            <div class="card-header">Configuración de avisos</div>
+            <div class="card-body">
+                <form method="post" action="{{ url_for('web.reminders_update_config') }}" class="row g-2 align-items-end">
+                    <div class="col-sm-8">
+                        <label class="form-label">Días de antelación para notificar</label>
+                        <input type="number" name="reminder_days_before" class="form-control" min="0" max="365" value="{{ reminder_days_before }}" required>
+                    </div>
+                    <div class="col-sm-4">
+                        <button type="submit" class="btn btn-primary w-100">Guardar</button>
+                    </div>
+                </form>
+                <small class="text-muted">Este valor se usa por defecto en nuevos avisos y en notificaciones automáticas por Telegram.</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-header">Crear aviso manual</div>
+            <div class="card-body">
+                <form method="post" action="{{ url_for('web.reminders_create_manual') }}">
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <label class="form-label">Vehículo</label>
+                            <select name="vehicle_id" class="form-select" required>
+                                <option value="">Seleccionar...</option>
+                                {% for v in vehicles %}
+                                <option value="{{ v.id }}">{{ v.plate }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Tipo de aviso</label>
+                            <input type="text" name="kind" class="form-control" placeholder="manual, permiso, contrato...">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Fecha vencimiento</label>
+                            <input type="date" name="due_date" class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Título (opcional)</label>
+                            <input type="text" name="title" class="form-control" placeholder="Ej. Revisión extintores">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Avisar con</label>
+                            <input type="number" name="notify_days_before" class="form-control" min="0" max="365" placeholder="{{ reminder_days_before }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">&nbsp;</label>
+                            <button type="submit" class="btn btn-success w-100">Crear aviso</button>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Notas</label>
+                            <input type="text" name="notes" class="form-control" placeholder="Texto opcional para la notificación">
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
 <form method="get" class="mb-3">
     <select name="vehicle_id" class="form-select form-select-sm d-inline-block w-auto">
         <option value="">Todos los vehículos</option>
@@ -21,15 +85,19 @@
                 <tr>
                     <th>Vehículo</th>
                     <th>Tipo</th>
+                    <th>Título</th>
                     <th>Fecha vencimiento</th>
                     <th>Días restantes</th>
+                    <th>Antelación</th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody>
                 {% for r in reminders %}
                 <tr>
                     <td>{{ r.vehicle_plate }}</td>
-                    <td>{{ r.kind }}</td>
+                    <td>{{ reminder_kind_labels.get(r.kind, r.kind) }}</td>
+                    <td>{{ r.title or '-' }}</td>
                     <td>{{ r.due_date|date_format }}</td>
                     <td>
                         {% if r.days_remaining < 0 %}
@@ -41,6 +109,12 @@
                         {% else %}
                         <span class="badge bg-secondary">{{ r.days_remaining }} días</span>
                         {% endif %}
+                    </td>
+                    <td>{{ r.notify_days_before if r.notify_days_before is not none else reminder_days_before }} días</td>
+                    <td class="text-end">
+                        <form method="post" action="{{ url_for('web.reminders_delete', rid=r.id) }}" onsubmit="return confirm('¿Eliminar este aviso?');">
+                            <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar</button>
+                        </form>
                     </td>
                 </tr>
                 {% endfor %}

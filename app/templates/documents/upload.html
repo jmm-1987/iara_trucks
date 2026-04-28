@@ -64,7 +64,12 @@
               <option value="{{ key }}">{{ label }}</option>
               {% endfor %}
             </select>
-            <small class="text-muted">Ticket gasoil (con litros y km), Factura taller, ITV, seguro, etc.</small>
+            <small class="text-muted">Puedes crear cualquier tipo: ticket gasoil, taller, ITV, seguro, albarán, contrato, etc.</small>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Adjuntar archivo (opcional)</label>
+            <input type="file" name="manual_file" class="form-control" accept=".jpg,.jpeg,.png,.pdf">
+            <small class="text-muted">Si no adjuntas archivo, se guarda igualmente como documento manual sin fichero.</small>
           </div>
           <div class="row g-2">
             <div class="col-md-6 mb-3">

@@ -61,6 +61,9 @@ if __name__ == "__main__":
     # Inicializar base de datos si no existe
     with app.app_context():
         db.create_all()
+        from app.services.db_compat_service import ensure_schema_compatibility
+
+        ensure_schema_compatibility()
         print("✅ Base de datos inicializada")
 
     # Bot Telegram en segundo plano

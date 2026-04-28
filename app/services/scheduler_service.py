@@ -10,6 +10,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from app.models import Document, DocumentStatus, Reminder, db
 from app.services.email_ingest_service import process_incoming_emails
 from app.services.document_processor import process_document
+from app.services.reminders_service import send_due_reminders_to_telegram
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,18 @@ def update_reminder_statuses():
     logger.debug("Recordatorios expirados actualizados")
 
 
+def send_telegram_due_notifications():
+    """Envía notificaciones de vencimientos al bot de Telegram."""
+    import os
+
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    if not token:
+        return
+    sent = send_due_reminders_to_telegram(token)
+    if sent:
+        logger.info("Notificaciones Telegram enviadas: %s", sent)
+
+
 def start_scheduler(app):
     """Inicia el scheduler con la app Flask."""
     global _scheduler
@@ -66,6 +79,8 @@ def start_scheduler(app):
             process_pending_documents()
             # 3) Actualizar recordatorios
             update_reminder_statuses()
+            # 4) Notificar vencimientos al bot
+            send_telegram_due_notifications()
 
     _scheduler.add_job(
         func=_with_app,

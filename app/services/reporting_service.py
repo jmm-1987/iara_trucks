@@ -43,12 +43,51 @@ def fuel_consumption_by_vehicle(
     rows = q.all()
     vehicles = {v.id: v for v in Vehicle.query.filter(Vehicle.active == True).all()}
 
+    # Consumo mensual L/100km (requiere al menos 2 tickets con km en el mes)
+    km_q = db.session.query(
+        FuelEntry.vehicle_id,
+        func.strftime("%Y-%m", FuelEntry.date).label("month"),
+        FuelEntry.kilometers,
+        FuelEntry.liters,
+    ).filter(FuelEntry.kilometers.isnot(None))
+    if vehicle_id:
+        km_q = km_q.filter(FuelEntry.vehicle_id == vehicle_id)
+    if date_from:
+        km_q = km_q.filter(FuelEntry.date >= date_from)
+    if date_to:
+        km_q = km_q.filter(FuelEntry.date <= date_to)
+    km_rows = km_q.order_by(FuelEntry.vehicle_id, "month", FuelEntry.date.asc(), FuelEntry.id.asc()).all()
+
+    monthly_l100_map: dict[tuple[int, str], float | None] = {}
+    monthly_entries: dict[tuple[int, str], list[tuple[int, float]]] = {}
+    for e in km_rows:
+        key = (e.vehicle_id, e.month)
+        monthly_entries.setdefault(key, []).append((int(e.kilometers), float(e.liters or 0)))
+
+    for key, entries in monthly_entries.items():
+        if len(entries) < 2:
+            monthly_l100_map[key] = None
+            continue
+        km_start = entries[0][0]
+        km_end = entries[-1][0]
+        if km_end <= km_start:
+            monthly_l100_map[key] = None
+            continue
+        total_km = km_end - km_start
+        # Igual que el cálculo anual: se excluye el último repostaje del tramo.
+        total_liters = sum(liters for _, liters in entries[:-1])
+        if total_liters <= 0:
+            monthly_l100_map[key] = None
+            continue
+        monthly_l100_map[key] = round((total_liters / total_km) * 100, 2)
+
     return [
         {
             "vehicle_id": r.vehicle_id,
             "vehicle_plate": vehicles.get(r.vehicle_id, Vehicle(plate="?")).plate,
             "month": r.month,
             "total_liters": float(r.total_liters or 0),
+            "liters_per_100km": monthly_l100_map.get((r.vehicle_id, r.month)),
             "subtotal_amount": float(r.subtotal_amount) if r.subtotal_amount is not None else None,
             "tax_amount": float(r.tax_amount) if r.tax_amount is not None else None,
             "total_amount": float(r.total_amount or 0),
@@ -203,8 +242,11 @@ def upcoming_due_dates(days_ahead: int | None = 90) -> list[dict]:
             "vehicle_id": r.vehicle_id,
             "vehicle_plate": r.vehicle.plate,
             "kind": r.kind,
-            "due_date": r.due_date.strftime('%d/%m/%Y'),  # Formato dd/mm/aaaa
+            "title": r.title,
+            "notes": r.notes,
+            "due_date": r.due_date,
             "days_remaining": (r.due_date - today).days,
+            "notify_days_before": r.notify_days_before,
         }
         for r in reminders
     ]
@@ -466,7 +508,7 @@ def export_csv_report(
                     row["vehicle_id"],
                     row["vehicle_plate"],
                     row["kind"],
-                    row["due_date"],
+                    row["due_date"].strftime("%d/%m/%Y") if row.get("due_date") else "",
                     row["days_remaining"],
                 ]
             )
