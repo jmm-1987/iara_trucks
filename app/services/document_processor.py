@@ -87,6 +87,40 @@ def _maintenance_concept_for_doc(doc: Document, extracted: dict | None = None) -
     return "Factura"
 
 
+def _validate_km_consistency(
+    vehicle_id: int, issue_date: date | None, kilometers: int | None, document_id: int | None = None
+) -> tuple[bool, str | None]:
+    """
+    Valida coherencia del odómetro contra tickets del mismo vehículo.
+    Regla: para fechas posteriores, los km deben ser mayores o iguales.
+    """
+    if not vehicle_id or kilometers is None:
+        return False, "No hay kilómetros para validar."
+
+    effective_date = issue_date or datetime.utcnow().date()
+    q = FuelEntry.query.filter(
+        FuelEntry.vehicle_id == vehicle_id,
+        FuelEntry.kilometers.isnot(None),
+    )
+    if document_id:
+        q = q.filter(FuelEntry.document_id != document_id)
+    entries = q.order_by(FuelEntry.date.asc(), FuelEntry.id.asc()).all()
+
+    for entry in entries:
+        entry_date = entry.date or effective_date
+        if entry_date <= effective_date and entry.kilometers > kilometers:
+            return (
+                False,
+                f"El km ({kilometers}) es menor que otro anterior ({entry.kilometers}, {entry_date}).",
+            )
+        if entry_date >= effective_date and entry.kilometers < kilometers:
+            return (
+                False,
+                f"El km ({kilometers}) es mayor que otro posterior ({entry.kilometers}, {entry_date}).",
+            )
+    return True, None
+
+
 def process_document(document_id: int) -> tuple[bool, str]:
     """
     Procesa un documento pendiente: llama a OpenAI, extrae datos, persiste.
@@ -295,6 +329,22 @@ def process_document(document_id: int) -> tuple[bool, str]:
     
     doc.currency = (amounts.get("currency") or "EUR")
     doc.kilometers = extracted.get("kilometers")
+    km_needs_confirmation = False
+    km_confirmation_reason = None
+
+    if doc.doc_type == DocumentType.FUEL_TICKET.value:
+        km_valid, km_reason = _validate_km_consistency(
+            doc.vehicle_id, doc.issue_date, doc.kilometers, doc.id
+        )
+        if not km_valid:
+            km_needs_confirmation = True
+            km_confirmation_reason = km_reason
+            doc.kilometers = None
+            extracted["kilometers"] = None
+            extracted["km_confirmation_reason"] = km_reason
+        else:
+            extracted["km_confirmation_reason"] = None
+        extracted["km_needs_confirmation"] = km_needs_confirmation
     # Sincronizar kilómetros con FuelEntry si existe
     _sync_document_fuelentry_kilometers(doc)
     
@@ -473,6 +523,8 @@ def build_summary_for_telegram(extracted: dict, doc_type_labels: dict) -> str:
     km = extracted.get("kilometers") or extracted.get("odometer_km")
     if km is not None:
         lines.append(f"🔢 Kilómetros: {km} km")
+    if extracted.get("km_confirmation_reason"):
+        lines.append(f"⚠️ Revisar km: {extracted.get('km_confirmation_reason')}")
 
     conf = extracted.get("confidence", 0)
     lines.append(f"✓ Confianza: {int(conf * 100)}%")

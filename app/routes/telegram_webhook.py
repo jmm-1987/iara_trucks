@@ -15,6 +15,7 @@ from app.services.document_processor import (
     build_summary_for_telegram,
     process_document,
 )
+from app.services.dedup_service import find_duplicate_by_hash, sha256_bytes
 from app.services.extraction_service import get_missing_critical_fields
 from app.services.telegram_service import (
     get_file,
@@ -160,8 +161,30 @@ def ask_for_kilometers(chat_id: int, user_id: int, token: str) -> None:
     send_message(
         token,
         chat_id,
-        "📏 <b>¿Cuántos kilómetros tiene el vehículo ahora?</b>\n\nEscribe solo el número (ej: 125000) o escribe 'skip' para omitir.",
+        "📏 <b>Indica los kilómetros actuales del vehículo</b>\n\nEscribe solo el número (ej: 125000). Si no estás seguro, escribe 'skip' para omitir.",
     )
+
+
+def _is_km_value_consistent(vehicle_id: int, ticket_date, kilometers: int, current_document_id: int | None = None) -> bool:
+    """Valida que el odómetro no rompa la secuencia temporal."""
+    if not vehicle_id:
+        return True
+    from app.models import FuelEntry
+
+    q = FuelEntry.query.filter(
+        FuelEntry.vehicle_id == vehicle_id,
+        FuelEntry.kilometers.isnot(None),
+    )
+    if current_document_id:
+        q = q.filter(FuelEntry.document_id != current_document_id)
+    entries = q.order_by(FuelEntry.date.asc(), FuelEntry.id.asc()).all()
+    effective_date = ticket_date
+    for entry in entries:
+        if entry.date <= effective_date and entry.kilometers > kilometers:
+            return False
+        if entry.date >= effective_date and entry.kilometers < kilometers:
+            return False
+    return True
 
 
 def handle_callback_query(data: dict, token: str) -> None:
@@ -252,9 +275,20 @@ def handle_text_message(chat_id: int, user_id: int, text: str, token: str) -> No
             fuel_entry = FuelEntry.query.filter_by(document_id=session.pending_document_id).first()
             
             if fuel_entry:
+                doc = Document.query.get(session.pending_document_id)
+                ticket_date = (doc.issue_date if doc else None) or fuel_entry.date
+                if kilometers is not None and not _is_km_value_consistent(
+                    fuel_entry.vehicle_id, ticket_date, kilometers, session.pending_document_id
+                ):
+                    send_message(
+                        token,
+                        chat_id,
+                        "❌ Ese valor de kilómetros no cuadra con el histórico del vehículo para esa fecha. Revisa el número o escribe 'skip'.",
+                    )
+                    return
+
                 fuel_entry.kilometers = kilometers
                 # También actualizar el odómetro en el documento
-                doc = Document.query.get(session.pending_document_id)
                 if doc:
                     doc.kilometers = kilometers
                 db.session.commit()
@@ -375,6 +409,18 @@ def process_incoming_document(
         clear_pending_state(user_id)
         return
 
+    file_hash = sha256_bytes(content)
+    existing_dup = find_duplicate_by_hash(file_hash, vehicle_id=vehicle_id)
+    if existing_dup:
+        send_message(
+            token,
+            chat_id,
+            f"⚠️ Documento duplicado detectado (#{existing_dup.id}). No se ha procesado de nuevo.",
+        )
+        clear_pending_state(user_id)
+        handle_start(chat_id, token)
+        return
+
     # Guardar archivo
     upload_dir = Path(app.config["UPLOAD_FOLDER"])
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -389,6 +435,7 @@ def process_incoming_document(
         vehicle_id=vehicle_id,
         user_id=user_id,
         file_path=unique_name,
+        file_hash=file_hash,
         status=DocumentStatus.PENDING.value,
     )
     db.session.add(doc)
@@ -414,13 +461,19 @@ def process_incoming_document(
         else:
             summary += "\n\n✅ Documento guardado correctamente."
         
-        # Si es un ticket de gasoil, preguntar por kilómetros
+        # Si es ticket de gasoil, preguntar km solo cuando falten o haya incoherencia.
+        should_ask_km = False
         if session.pending_action == "upload_ticket" and doc.doc_type == "fuel_ticket":
-            # Guardar document_id para poder actualizar después
+            should_ask_km = (
+                doc.kilometers is None or bool(extracted.get("km_needs_confirmation"))
+            )
+
+        if should_ask_km:
             session.pending_document_id = doc.id
             session.pending_file_id = file_id
             session.pending_file_path = file_path_telegram
             db.session.commit()
+            send_message(token, chat_id, summary)
             ask_for_kilometers(chat_id, user_id, token)
         else:
             clear_pending_state(user_id)

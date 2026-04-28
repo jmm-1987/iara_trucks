@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Editar ticket combustible{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4">Editar ticket combustible</h1>
+
+<div class="card" style="max-width: 760px;">
+  <div class="card-body">
+    <form method="post">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Vehículo</label>
+          <input class="form-control" value="{{ fuel.vehicle.plate if fuel.vehicle else '-' }}" disabled>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Fecha</label>
+          <input type="date" name="date" class="form-control" value="{{ fuel.date.isoformat() if fuel.date else '' }}" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Kilómetros</label>
+          <input type="number" name="kilometers" class="form-control" min="0" step="1" value="{{ fuel.kilometers if fuel.kilometers is not none else '' }}">
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Litros</label>
+          <input type="number" name="liters" class="form-control" step="0.01" min="0.001" value="{{ fuel.liters if fuel.liters is not none else '' }}" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Precio/litro (€)</label>
+          <input type="number" name="price_per_liter" class="form-control" step="0.0001" min="0.0001" value="{{ fuel.price_per_liter if fuel.price_per_liter is not none else '' }}" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Total (€)</label>
+          <input type="number" name="total_amount" class="form-control" step="0.01" min="0" value="{{ fuel.total_amount if fuel.total_amount is not none else '' }}" required>
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Base (€)</label>
+          <input type="number" name="subtotal_amount" class="form-control" step="0.01" min="0" value="{{ fuel.subtotal_amount if fuel.subtotal_amount is not none else '' }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">IVA (€)</label>
+          <input type="number" name="tax_amount" class="form-control" step="0.01" min="0" value="{{ fuel.tax_amount if fuel.tax_amount is not none else '' }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Estación / proveedor</label>
+          <input type="text" name="station" class="form-control" value="{{ fuel.station or '' }}">
+        </div>
+      </div>
+
+      <div class="mt-4 d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Guardar cambios</button>
+        <a href="{{ next_url }}" class="btn btn-secondary">Volver</a>
+        {% if doc %}
+        <a href="{{ url_for('web.document_detail', did=doc.id) }}" class="btn btn-outline-secondary">Abrir documento</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

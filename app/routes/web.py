@@ -36,6 +36,11 @@ from app.models import (
     db,
 )
 from app.services.document_processor import process_document
+from app.services.dedup_service import (
+    find_duplicate_by_hash,
+    find_duplicate_manual_entry,
+    sha256_bytes,
+)
 from app.services.reminders_service import get_reminder_days_before, set_reminder_days_before
 from app.services.reporting_service import (
     calculate_fuel_consumption_stats,
@@ -529,6 +534,30 @@ def _parse_date(value):
     return None
 
 
+def _is_km_consistent_for_vehicle(
+    vehicle_id: int,
+    ticket_date: date,
+    kilometers: int | None,
+    exclude_fuel_entry_id: int | None = None,
+) -> bool:
+    """Valida que el odómetro mantenga orden temporal en el histórico del vehículo."""
+    if kilometers is None:
+        return True
+    q = FuelEntry.query.filter(
+        FuelEntry.vehicle_id == vehicle_id,
+        FuelEntry.kilometers.isnot(None),
+    )
+    if exclude_fuel_entry_id:
+        q = q.filter(FuelEntry.id != exclude_fuel_entry_id)
+    entries = q.order_by(FuelEntry.date.asc(), FuelEntry.id.asc()).all()
+    for entry in entries:
+        if entry.date <= ticket_date and entry.kilometers > kilometers:
+            return False
+        if entry.date >= ticket_date and entry.kilometers < kilometers:
+            return False
+    return True
+
+
 @web_bp.route("/documentos/subir", methods=["GET", "POST"])
 def document_upload():
     if request.method == "POST":
@@ -567,24 +596,52 @@ def document_upload():
 
             manual_file = request.files.get("manual_file")
             stored_file_path = "manual"
+            file_hash = None
             if manual_file and manual_file.filename:
                 allowed = {"jpg", "jpeg", "png", "pdf"}
                 if not allowed_file(manual_file.filename, allowed):
                     flash("El archivo manual debe ser jpg, png o pdf.", "danger")
                     return redirect(url_for("web.document_upload"))
+                content = manual_file.read()
+                if not content:
+                    flash("El archivo está vacío.", "danger")
+                    return redirect(url_for("web.document_upload"))
+                file_hash = sha256_bytes(content)
+                existing_dup = find_duplicate_by_hash(file_hash, vehicle_id=vehicle_id)
+                if existing_dup:
+                    flash(
+                        f"Documento duplicado detectado (doc #{existing_dup.id}). No se ha vuelto a crear.",
+                        "warning",
+                    )
+                    return redirect(url_for("web.document_detail", did=existing_dup.id))
                 raw_name = secure_filename(manual_file.filename) or "manual"
                 ext = (raw_name.rsplit(".", 1)[-1] or "jpg").lower()
                 upload_dir = Path(current_app.config["UPLOAD_FOLDER"])
                 upload_dir.mkdir(parents=True, exist_ok=True)
                 unique_name = f"manual_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{raw_name[:20]}.{ext}"
                 target = upload_dir / unique_name
-                manual_file.save(str(target))
+                target.write_bytes(content)
                 stored_file_path = unique_name
+            else:
+                existing_manual_dup = find_duplicate_manual_entry(
+                    vehicle_id=vehicle_id,
+                    doc_type=doc_type,
+                    issue_date=issue_date,
+                    total_amount=total_amount,
+                    vendor=vendor,
+                )
+                if existing_manual_dup:
+                    flash(
+                        f"Entrada manual duplicada detectada (doc #{existing_manual_dup.id}).",
+                        "warning",
+                    )
+                    return redirect(url_for("web.document_detail", did=existing_manual_dup.id))
 
             doc = Document(
                 vehicle_id=vehicle_id,
                 doc_type=doc_type,
                 file_path=stored_file_path,
+                file_hash=file_hash,
                 status=DocumentStatus.PROCESSED.value,
                 issue_date=issue_date,
                 due_date=due_date,
@@ -684,6 +741,18 @@ def document_upload():
         filename = secure_filename(f.filename)
         if not filename:
             filename = "upload"
+        content = f.read()
+        if not content:
+            flash("El archivo está vacío.", "danger")
+            return redirect(url_for("web.document_upload"))
+        file_hash = sha256_bytes(content)
+        existing_dup = find_duplicate_by_hash(file_hash, vehicle_id=vehicle_id)
+        if existing_dup:
+            flash(
+                f"Documento duplicado detectado (doc #{existing_dup.id}). No se ha vuelto a subir.",
+                "warning",
+            )
+            return redirect(url_for("web.document_detail", did=existing_dup.id))
         from app import create_app
 
         app = create_app()
@@ -695,12 +764,13 @@ def document_upload():
             flash("PDF: se intentará procesar convirtiendo la primera página a imagen.", "info")
         unique_name = f"{stem}_{filename[:20]}.{ext}"
         filepath = upload_dir / unique_name
-        f.save(str(filepath))
+        filepath.write_bytes(content)
 
         doc = Document(
             vehicle_id=vehicle_id,
             doc_type=None,
             file_path=unique_name,
+            file_hash=file_hash,
             status=DocumentStatus.PENDING.value,
         )
         db.session.add(doc)
@@ -715,6 +785,68 @@ def document_upload():
 
     vehicles = Vehicle.query.filter(Vehicle.active == True).all()
     return render_template("documents/upload.html", vehicles=vehicles, doc_type_labels=DOC_TYPE_LABELS)
+
+
+@web_bp.route("/tickets/<int:fid>/editar", methods=["GET", "POST"])
+def fuel_entry_edit(fid):
+    fuel = FuelEntry.query.get_or_404(fid)
+    doc = fuel.document
+    next_url = request.args.get("next") or request.form.get("next") or url_for("web.reports", focus="consumos")
+
+    if request.method == "POST":
+        new_date = _parse_date(request.form.get("date")) or fuel.date
+        liters = _parse_decimal(request.form.get("liters"))
+        price_per_liter = _parse_decimal(request.form.get("price_per_liter"))
+        subtotal = _parse_decimal(request.form.get("subtotal_amount"))
+        tax = _parse_decimal(request.form.get("tax_amount"))
+        total = _parse_decimal(request.form.get("total_amount"))
+        station = (request.form.get("station") or "").strip() or None
+        km_raw = (request.form.get("kilometers") or "").strip()
+        kilometers = int(km_raw) if km_raw.isdigit() else None
+
+        if liters is None or liters <= 0:
+            flash("Litros debe ser mayor que 0.", "danger")
+            return render_template("fuel/form.html", fuel=fuel, doc=doc, next_url=next_url)
+        if price_per_liter is None or price_per_liter <= 0:
+            flash("Precio por litro debe ser mayor que 0.", "danger")
+            return render_template("fuel/form.html", fuel=fuel, doc=doc, next_url=next_url)
+        if total is None or total < 0:
+            flash("Total debe ser válido.", "danger")
+            return render_template("fuel/form.html", fuel=fuel, doc=doc, next_url=next_url)
+        if not _is_km_consistent_for_vehicle(fuel.vehicle_id, new_date, kilometers, fuel.id):
+            flash("Los kilómetros no son coherentes con el histórico para esa fecha.", "danger")
+            return render_template("fuel/form.html", fuel=fuel, doc=doc, next_url=next_url)
+
+        if subtotal is None and tax is None:
+            subtotal = total / Decimal("1.21")
+            tax = total - subtotal
+        elif subtotal is None:
+            subtotal = total - (tax or Decimal("0"))
+        elif tax is None:
+            tax = total - subtotal
+
+        fuel.date = new_date
+        fuel.liters = liters
+        fuel.price_per_liter = price_per_liter
+        fuel.subtotal_amount = subtotal
+        fuel.tax_amount = tax
+        fuel.total_amount = total
+        fuel.station = station
+        fuel.kilometers = kilometers
+
+        if doc:
+            doc.issue_date = new_date
+            doc.vendor = station
+            doc.subtotal_amount = subtotal
+            doc.tax_amount = tax
+            doc.total_amount = total
+            doc.kilometers = kilometers
+
+        db.session.commit()
+        flash("Ticket actualizado correctamente.", "success")
+        return redirect(next_url)
+
+    return render_template("fuel/form.html", fuel=fuel, doc=doc, next_url=next_url)
 
 
 # --- Reportes ---
@@ -751,6 +883,49 @@ def reports():
         .limit(300)
         .all()
     )
+    # Consumo por repostaje con ventana móvil (suaviza ruido entre tickets).
+    per_refuel_consumption: dict[int, float | None] = {}
+    fuel_tickets_asc = sorted(fuel_tickets, key=lambda x: (x.vehicle_id, x.date, x.id))
+    moving_window_size = 5
+    tickets_by_vehicle: dict[int, list[FuelEntry]] = {}
+    for t in fuel_tickets_asc:
+        tickets_by_vehicle.setdefault(t.vehicle_id, []).append(t)
+
+    for _, vehicle_tickets in tickets_by_vehicle.items():
+        # Cada intervalo representa el tramo entre i-1 -> i, usando litros de i-1.
+        intervals: list[dict] = []
+        for i in range(1, len(vehicle_tickets)):
+            prev = vehicle_tickets[i - 1]
+            curr = vehicle_tickets[i]
+            if (
+                prev.kilometers is None
+                or curr.kilometers is None
+                or prev.liters is None
+                or curr.kilometers <= prev.kilometers
+            ):
+                intervals.append({"ticket_id": curr.id, "liters": None, "km": None})
+                continue
+            intervals.append(
+                {
+                    "ticket_id": curr.id,
+                    "liters": float(prev.liters),
+                    "km": float(curr.kilometers - prev.kilometers),
+                }
+            )
+
+        # Consumo suavizado por ventana móvil ponderada por kilómetros.
+        for idx, interval in enumerate(intervals):
+            if interval["liters"] is None or interval["km"] is None:
+                per_refuel_consumption[interval["ticket_id"]] = None
+                continue
+
+            window = intervals[max(0, idx - moving_window_size + 1): idx + 1]
+            liters_sum = sum(w["liters"] for w in window if w["liters"] is not None and w["km"] is not None)
+            km_sum = sum(w["km"] for w in window if w["liters"] is not None and w["km"] is not None)
+            if km_sum > 0 and liters_sum > 0:
+                per_refuel_consumption[interval["ticket_id"]] = round((liters_sum / km_sum) * 100, 2)
+            else:
+                per_refuel_consumption[interval["ticket_id"]] = None
     expense_data = expenses_by_category(vehicle_id, df, dt)
     # Mostrar todos los vencimientos activos en reportes
     reminders_data = upcoming_due_dates(None)
@@ -762,6 +937,7 @@ def reports():
         "reports/index.html",
         fuel_data=fuel_data,
         fuel_tickets=fuel_tickets,
+        per_refuel_consumption=per_refuel_consumption,
         expense_data=expense_data,
         reminders_data=reminders_data,
         vehicles=vehicles,

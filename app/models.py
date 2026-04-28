@@ -106,6 +106,7 @@ class Document(db.Model):
     user_id = db.Column(db.Integer, ForeignKey("user.id"), nullable=True)
     doc_type = db.Column(db.String(50))  # DocumentType value
     file_path = db.Column(db.String(500), nullable=False)
+    file_hash = db.Column(db.String(64), nullable=True, index=True)
     uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
     processed_at = db.Column(db.DateTime, nullable=True)
     status = db.Column(

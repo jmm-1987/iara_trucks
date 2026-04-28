@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from flask import current_app
 
 from app.models import Document, DocumentStatus, db
+from app.services.dedup_service import find_duplicate_by_hash, sha256_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -129,12 +130,21 @@ def process_incoming_emails() -> None:
                     payload = part.get_payload(decode=True)
                     if not payload:
                         continue
+                    file_hash = sha256_bytes(payload)
+                    existing_dup = find_duplicate_by_hash(file_hash)
+                    if existing_dup:
+                        logger.info(
+                            "Adjunto duplicado detectado en email (doc existente %s), se omite.",
+                            existing_dup.id,
+                        )
+                        continue
                     file_path.write_bytes(payload)
 
                     doc = Document(
                         vehicle_id=None,
                         doc_type=None,
                         file_path=unique_name,
+                        file_hash=file_hash,
                         status=DocumentStatus.PENDING.value,
                     )
                     db.session.add(doc)

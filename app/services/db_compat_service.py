@@ -29,4 +29,6 @@ def ensure_schema_compatibility() -> None:
         )
     if not _column_exists("reminder", "last_notified_at"):
         db.session.execute(text("ALTER TABLE reminder ADD COLUMN last_notified_at DATETIME"))
+    if not _column_exists("document", "file_hash"):
+        db.session.execute(text("ALTER TABLE document ADD COLUMN file_hash VARCHAR(64)"))
     db.session.commit()

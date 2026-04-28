@@ -290,8 +290,10 @@
                         <th>Fecha</th>
                         <th>Vehículo</th>
                         <th>Litros</th>
+                        <th>L/100 km (ventana móvil)</th>
                         <th>Base (sin IVA)</th>
                         <th>Kilómetros</th>
+                        <th></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -302,10 +304,23 @@
                         <td>{{ fe.vehicle.plate if fe.vehicle else '-' }}</td>
                         <td>{{ "%.2f"|format(fe.liters or 0) }}</td>
                         <td>
+                            {% set l100 = per_refuel_consumption.get(fe.id) %}
+                            {% if l100 is not none %}
+                                {{ "%.2f"|format(l100) }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>
                             {% set base = fe.subtotal_amount or fe.total_amount %}
                             {{ "%.2f"|format(base or 0) }} €
                         </td>
                         <td>{{ km if km is not none else '-' }}</td>
+                        <td class="text-end">
+                            <a href="{{ url_for('web.fuel_entry_edit', fid=fe.id, next=request.full_path) }}" class="btn btn-sm btn-outline-primary">
+                                Editar
+                            </a>
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
