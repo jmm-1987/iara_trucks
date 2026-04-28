@@ -124,8 +124,9 @@
                     </td>
                     <td>{{ d.uploaded_at|date_format }}</td>
                     <td>{% if d.total_amount %}{{ "%.2f"|format(d.total_amount) }} {{ d.currency or 'EUR' }}{% else %}-{% endif %}</td>
-                    <td>
+                    <td class="text-end">
                         <a href="{{ url_for('web.document_detail', did=d.id) }}" class="btn btn-sm btn-outline-primary">Ver</a>
+                        <a href="{{ url_for('web.document_edit', did=d.id, next=request.full_path) }}" class="btn btn-sm btn-outline-secondary">Editar</a>
                     </td>
                 </tr>
                 {% endfor %}

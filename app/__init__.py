@@ -35,7 +35,7 @@ def create_app(config_class=None):
     # Filtro para formatear fechas a dd/mm/aaaa
     @app.template_filter('date_format')
     def date_format_filter(value):
-        """Formatea una fecha a dd/mm/aaaa."""
+        """Formatea cualquier fecha a dd/mm/aaaa."""
         if not value:
             return '-'
         if isinstance(value, str):
@@ -45,13 +45,14 @@ def create_app(config_class=None):
                 if len(value) == 10 and '-' in value:  # Formato YYYY-MM-DD
                     dt = datetime.strptime(value, '%Y-%m-%d')
                     return dt.strftime('%d/%m/%Y')
+                # Si viene con fecha+h
+                if len(value) >= 10 and '-' in value[:10]:
+                    dt = datetime.strptime(value[:10], '%Y-%m-%d')
+                    return dt.strftime('%d/%m/%Y')
                 return value
             except:
                 return value
         try:
-            # Si tiene hora, mostrar también la hora
-            if hasattr(value, 'hour'):
-                return value.strftime('%d/%m/%Y %H:%M')
             return value.strftime('%d/%m/%Y')
         except:
             return str(value)

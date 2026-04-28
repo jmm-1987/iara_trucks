@@ -35,6 +35,9 @@
                     {% endif %}
                 </table>
                 <div class="d-flex gap-2 flex-wrap">
+                    <a href="{{ url_for('web.document_edit', did=doc.id, next=request.full_path) }}" class="btn btn-outline-primary">
+                        <i class="bi bi-pencil-square me-1"></i> Editar
+                    </a>
                     {% if doc.file_path != 'manual' %}
                     <form method="post" action="{{ url_for('web.document_reprocess', did=doc.id) }}" class="d-inline">
                         <button type="submit" class="btn btn-outline-warning" onclick="return confirm('¿Reprocesar documento?')">

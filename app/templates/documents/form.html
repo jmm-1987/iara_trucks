@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Editar documento{% endblock %}
+{% block content %}
+<h1 class="h3 mb-4">Editar documento #{{ doc.id }}</h1>
+
+<div class="card" style="max-width: 900px;">
+  <div class="card-body">
+    <form method="post">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Vehículo</label>
+          <select name="vehicle_id" class="form-select" required>
+            <option value="">Seleccionar...</option>
+            {% for v in vehicles %}
+            <option value="{{ v.id }}" {% if doc.vehicle_id == v.id %}selected{% endif %}>{{ v.plate }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Tipo documento</label>
+          <select name="doc_type" class="form-select" required>
+            {% for key, label in doc_type_labels.items() %}
+            <option value="{{ key }}" {% if (doc.doc_type or 'other') == key %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Proveedor</label>
+          <input type="text" name="vendor" class="form-control" value="{{ doc.vendor or '' }}">
+        </div>
+
+        <div class="col-md-3">
+          <label class="form-label">Fecha emisión</label>
+          <input type="date" name="issue_date" class="form-control" value="{{ doc.issue_date.isoformat() if doc.issue_date else '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Fecha vencimiento</label>
+          <input type="date" name="due_date" class="form-control" value="{{ doc.due_date.isoformat() if doc.due_date else '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Kilómetros</label>
+          <input type="number" name="kilometers" class="form-control" min="0" step="1" value="{{ doc.kilometers if doc.kilometers is not none else (doc.fuel_entry.kilometers if doc.fuel_entry and doc.fuel_entry.kilometers is not none else '') }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Concepto mantenimiento</label>
+          <input type="text" name="maintenance_concept" class="form-control" value="{{ doc.maintenance_entry.concept if doc.maintenance_entry else '' }}">
+        </div>
+
+        <div class="col-md-4">
+          <label class="form-label">Base (€)</label>
+          <input type="number" name="subtotal_amount" class="form-control" step="0.01" value="{{ doc.subtotal_amount if doc.subtotal_amount is not none else '' }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">IVA (€)</label>
+          <input type="number" name="tax_amount" class="form-control" step="0.01" value="{{ doc.tax_amount if doc.tax_amount is not none else '' }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Total (€)</label>
+          <input type="number" name="total_amount" class="form-control" step="0.01" value="{{ doc.total_amount if doc.total_amount is not none else '' }}" required>
+        </div>
+
+        {% if doc.fuel_entry %}
+        <div class="col-md-6">
+          <label class="form-label">Litros (ticket)</label>
+          <input type="number" name="fuel_liters" class="form-control" step="0.01" min="0" value="{{ doc.fuel_entry.liters if doc.fuel_entry.liters is not none else '' }}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Precio/litro (ticket)</label>
+          <input type="number" name="fuel_price_per_liter" class="form-control" step="0.0001" min="0" value="{{ doc.fuel_entry.price_per_liter if doc.fuel_entry.price_per_liter is not none else '' }}">
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="mt-4 d-flex gap-2">
+        <button type="submit" class="btn btn-primary">Guardar cambios</button>
+        <a href="{{ next_url }}" class="btn btn-secondary">Cancelar</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

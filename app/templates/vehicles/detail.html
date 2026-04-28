@@ -212,7 +212,7 @@
               <div class="badge {% if r.days_remaining <= 7 %}red{% elif r.days_remaining <= 30 %}orange{% else %}green{% endif %}">🗓</div>
               <div>
                 <p class="alertTitle">{{ r.kind }}</p>
-                <div class="alertMeta">Vence {{ r.due_date }} · {{ r.days_remaining }} días</div>
+                <div class="alertMeta">Vence {{ r.due_date|date_format }} · {{ r.days_remaining }} días</div>
               </div>
             </div>
           </div>

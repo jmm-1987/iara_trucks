@@ -448,7 +448,7 @@ def process_document(document_id: int) -> tuple[bool, str]:
             vendor=doc.vendor,
         )
         db.session.add(expense)
-        if _is_truck_vehicle(doc) and _is_maintenance_document_type(doc.doc_type):
+        if _is_maintenance_document_type(doc.doc_type):
             resolved_concept = _maintenance_concept_for_doc(doc, extracted)
             existing_maintenance = MaintenanceEntry.query.filter_by(document_id=doc.id).first()
             if existing_maintenance:

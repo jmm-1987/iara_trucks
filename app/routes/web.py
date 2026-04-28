@@ -2,6 +2,7 @@
 Rutas web - Panel de gestión de flotas.
 """
 import calendar
+import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
@@ -86,6 +87,54 @@ def _is_maintenance_document_type(doc_type: str | None) -> bool:
         DocumentType.WORKSHOP_INVOICE.value,
         DocumentType.TIRES_INVOICE.value,
     }
+
+
+def _ensure_maintenance_entries_for_invoices() -> int:
+    """
+    Garantiza que toda factura con vehículo asociado tenga MaintenanceEntry.
+    Regla de negocio: factura + matrícula => mantenimiento.
+    """
+    docs = (
+        Document.query.filter(
+            Document.vehicle_id.isnot(None),
+            Document.doc_type.in_(
+                [
+                    DocumentType.INVOICE.value,
+                    DocumentType.WORKSHOP_INVOICE.value,
+                    DocumentType.TIRES_INVOICE.value,
+                ]
+            ),
+        )
+        .order_by(Document.id.asc())
+        .all()
+    )
+    created = 0
+    for doc in docs:
+        exists = MaintenanceEntry.query.filter_by(document_id=doc.id).first()
+        if exists:
+            continue
+        concept = DOC_TYPE_LABELS.get(doc.doc_type, "Factura")
+        if doc.extracted_json:
+            try:
+                extracted = json.loads(doc.extracted_json)
+                concept = (extracted.get("maintenance_concept") or "").strip() or concept
+            except (ValueError, TypeError):
+                pass
+        maintenance = MaintenanceEntry(
+            document_id=doc.id,
+            vehicle_id=doc.vehicle_id,
+            date=doc.issue_date or datetime.utcnow().date(),
+            concept=concept,
+            vendor=doc.vendor,
+            subtotal_amount=doc.subtotal_amount,
+            tax_amount=doc.tax_amount,
+            total_amount=doc.total_amount or Decimal("0"),
+        )
+        db.session.add(maintenance)
+        created += 1
+    if created:
+        db.session.commit()
+    return created
 
 
 def allowed_file(filename: str, allowed: set) -> bool:
@@ -331,6 +380,7 @@ def document_list():
 
 @web_bp.route("/mantenimientos")
 def maintenance_list():
+    _ensure_maintenance_entries_for_invoices()
     page = request.args.get("page", 1, type=int)
     vehicle_id = request.args.get("vehicle_id", type=int)
     date_from = request.args.get("date_from")
@@ -360,6 +410,20 @@ def maintenance_list():
         except ValueError:
             pass
 
+    totals_row = q.with_entities(
+        func.coalesce(func.sum(MaintenanceEntry.subtotal_amount), 0).label("subtotal"),
+        func.coalesce(func.sum(MaintenanceEntry.tax_amount), 0).label("tax"),
+        func.coalesce(func.sum(MaintenanceEntry.total_amount), 0).label("total"),
+        func.count(MaintenanceEntry.id).label("count"),
+    ).first()
+
+    totals = {
+        "subtotal": float(totals_row.subtotal or 0),
+        "tax": float(totals_row.tax or 0),
+        "total": float(totals_row.total or 0),
+        "count": int(totals_row.count or 0),
+    }
+
     pagination = q.order_by(MaintenanceEntry.date.desc(), MaintenanceEntry.id.desc()).paginate(
         page=page, per_page=PER_PAGE
     )
@@ -367,6 +431,7 @@ def maintenance_list():
     return render_template(
         "maintenance/list.html",
         pagination=pagination,
+        totals=totals,
         vehicles=vehicles,
         filters={
             "vehicle_id": vehicle_id,
@@ -386,6 +451,96 @@ def document_detail(did):
         doc=doc,
         doc_type_labels=DOC_TYPE_LABELS,
     )
+
+
+@web_bp.route("/documentos/<int:did>/editar", methods=["GET", "POST"])
+def document_edit(did):
+    doc = Document.query.get_or_404(did)
+    vehicles = Vehicle.query.filter(Vehicle.active == True).order_by(Vehicle.plate).all()
+    next_url = request.args.get("next") or request.form.get("next") or url_for("web.document_detail", did=doc.id)
+
+    if request.method == "POST":
+        vehicle_id = request.form.get("vehicle_id", type=int)
+        doc_type = (request.form.get("doc_type") or "").strip() or "other"
+        vendor = (request.form.get("vendor") or "").strip() or None
+        issue_date = _parse_date(request.form.get("issue_date"))
+        due_date = _parse_date(request.form.get("due_date"))
+        subtotal = _parse_decimal(request.form.get("subtotal_amount"))
+        tax = _parse_decimal(request.form.get("tax_amount"))
+        total = _parse_decimal(request.form.get("total_amount"))
+        km_raw = (request.form.get("kilometers") or "").strip()
+        kilometers = int(km_raw) if km_raw.isdigit() else None
+
+        if not vehicle_id:
+            flash("Selecciona un vehículo.", "danger")
+            return render_template("documents/form.html", doc=doc, vehicles=vehicles, doc_type_labels=DOC_TYPE_LABELS, next_url=next_url)
+        if total is None:
+            flash("El total es obligatorio.", "danger")
+            return render_template("documents/form.html", doc=doc, vehicles=vehicles, doc_type_labels=DOC_TYPE_LABELS, next_url=next_url)
+        if subtotal is None and tax is None:
+            subtotal = total
+            tax = Decimal("0")
+        elif subtotal is None:
+            subtotal = total - (tax or Decimal("0"))
+        elif tax is None:
+            tax = total - subtotal
+
+        doc.vehicle_id = vehicle_id
+        doc.doc_type = doc_type
+        doc.vendor = vendor
+        doc.issue_date = issue_date
+        doc.due_date = due_date
+        doc.subtotal_amount = subtotal
+        doc.tax_amount = tax
+        doc.total_amount = total
+        doc.kilometers = kilometers
+
+        # Sincronización con registro de combustible (si existe)
+        fuel = FuelEntry.query.filter_by(document_id=doc.id).first()
+        if fuel:
+            liters = _parse_decimal(request.form.get("fuel_liters"))
+            ppl = _parse_decimal(request.form.get("fuel_price_per_liter"))
+            if liters is not None and liters > 0:
+                fuel.liters = liters
+            if ppl is not None and ppl > 0:
+                fuel.price_per_liter = ppl
+            fuel.vehicle_id = vehicle_id
+            fuel.date = issue_date or fuel.date
+            fuel.station = vendor
+            fuel.subtotal_amount = subtotal
+            fuel.tax_amount = tax
+            fuel.total_amount = total
+            fuel.kilometers = kilometers
+
+        # Sincronización con gasto (si existe)
+        expense = ExpenseEntry.query.filter_by(document_id=doc.id).first()
+        if expense:
+            expense.vehicle_id = vehicle_id
+            expense.date = issue_date or expense.date
+            expense.subtotal_amount = subtotal
+            expense.tax_amount = tax
+            expense.total_amount = total
+            expense.vendor = vendor
+            expense.category = DOC_TYPE_TO_EXPENSE_CATEGORY.get(doc_type, ExpenseCategory.OTHER.value)
+
+        # Sincronización con mantenimiento (si existe)
+        maintenance = MaintenanceEntry.query.filter_by(document_id=doc.id).first()
+        if maintenance:
+            maintenance.vehicle_id = vehicle_id
+            maintenance.date = issue_date or maintenance.date
+            maintenance.vendor = vendor
+            maintenance.subtotal_amount = subtotal
+            maintenance.tax_amount = tax
+            maintenance.total_amount = total
+            concept = (request.form.get("maintenance_concept") or "").strip()
+            if concept:
+                maintenance.concept = concept
+
+        db.session.commit()
+        flash("Documento actualizado correctamente.", "success")
+        return redirect(next_url)
+
+    return render_template("documents/form.html", doc=doc, vehicles=vehicles, doc_type_labels=DOC_TYPE_LABELS, next_url=next_url)
 
 
 @web_bp.route("/documentos/<int:did>/reprocesar", methods=["POST"])
@@ -576,8 +731,8 @@ def document_upload():
                 return redirect(url_for("web.document_upload"))
 
             total_amount = _parse_decimal(request.form.get("total_amount"))
-            if total_amount is None or total_amount < 0:
-                flash("El importe total es obligatorio y debe ser ≥ 0.", "danger")
+            if total_amount is None:
+                flash("El importe total es obligatorio.", "danger")
                 return redirect(url_for("web.document_upload"))
 
             subtotal_amount = _parse_decimal(request.form.get("subtotal_amount"))
@@ -693,8 +848,7 @@ def document_upload():
                     vendor=vendor,
                 )
                 db.session.add(expense)
-                vehicle = Vehicle.query.get(vehicle_id)
-                if _is_truck_vehicle(vehicle) and _is_maintenance_document_type(doc_type):
+                if _is_maintenance_document_type(doc_type):
                     concept = maintenance_concept or DOC_TYPE_LABELS.get(doc_type, "Factura")
                     maintenance = MaintenanceEntry(
                         document_id=doc.id,
@@ -810,7 +964,7 @@ def fuel_entry_edit(fid):
         if price_per_liter is None or price_per_liter <= 0:
             flash("Precio por litro debe ser mayor que 0.", "danger")
             return render_template("fuel/form.html", fuel=fuel, doc=doc, next_url=next_url)
-        if total is None or total < 0:
+        if total is None:
             flash("Total debe ser válido.", "danger")
             return render_template("fuel/form.html", fuel=fuel, doc=doc, next_url=next_url)
         if not _is_km_consistent_for_vehicle(fuel.vehicle_id, new_date, kilometers, fuel.id):
@@ -847,6 +1001,56 @@ def fuel_entry_edit(fid):
         return redirect(next_url)
 
     return render_template("fuel/form.html", fuel=fuel, doc=doc, next_url=next_url)
+
+
+@web_bp.route("/mantenimientos/<int:mid>/editar", methods=["GET", "POST"])
+def maintenance_edit(mid):
+    maintenance = MaintenanceEntry.query.get_or_404(mid)
+    doc = maintenance.document
+    next_url = request.args.get("next") or request.form.get("next") or url_for("web.maintenance_list")
+
+    if request.method == "POST":
+        new_date = _parse_date(request.form.get("date")) or maintenance.date
+        concept = (request.form.get("concept") or "").strip()
+        vendor = (request.form.get("vendor") or "").strip() or None
+        subtotal = _parse_decimal(request.form.get("subtotal_amount"))
+        tax = _parse_decimal(request.form.get("tax_amount"))
+        total = _parse_decimal(request.form.get("total_amount"))
+
+        if not concept:
+            flash("El concepto es obligatorio.", "danger")
+            return render_template("maintenance/form.html", maintenance=maintenance, doc=doc, next_url=next_url)
+        if total is None:
+            flash("El total debe ser válido.", "danger")
+            return render_template("maintenance/form.html", maintenance=maintenance, doc=doc, next_url=next_url)
+
+        if subtotal is None and tax is None:
+            subtotal = total
+            tax = Decimal("0")
+        elif subtotal is None:
+            subtotal = total - (tax or Decimal("0"))
+        elif tax is None:
+            tax = total - subtotal
+
+        maintenance.date = new_date
+        maintenance.concept = concept
+        maintenance.vendor = vendor
+        maintenance.subtotal_amount = subtotal
+        maintenance.tax_amount = tax
+        maintenance.total_amount = total
+
+        if doc:
+            doc.issue_date = new_date
+            doc.vendor = vendor
+            doc.subtotal_amount = subtotal
+            doc.tax_amount = tax
+            doc.total_amount = total
+
+        db.session.commit()
+        flash("Mantenimiento actualizado correctamente.", "success")
+        return redirect(next_url)
+
+    return render_template("maintenance/form.html", maintenance=maintenance, doc=doc, next_url=next_url)
 
 
 # --- Reportes ---

@@ -59,6 +59,7 @@ def fuel_consumption_by_vehicle(
     km_rows = km_q.order_by(FuelEntry.vehicle_id, "month", FuelEntry.date.asc(), FuelEntry.id.asc()).all()
 
     monthly_l100_map: dict[tuple[int, str], float | None] = {}
+    monthly_km_map: dict[tuple[int, str], int | None] = {}
     monthly_entries: dict[tuple[int, str], list[tuple[int, float]]] = {}
     for e in km_rows:
         key = (e.vehicle_id, e.month)
@@ -67,13 +68,16 @@ def fuel_consumption_by_vehicle(
     for key, entries in monthly_entries.items():
         if len(entries) < 2:
             monthly_l100_map[key] = None
+            monthly_km_map[key] = None
             continue
         km_start = entries[0][0]
         km_end = entries[-1][0]
         if km_end <= km_start:
             monthly_l100_map[key] = None
+            monthly_km_map[key] = None
             continue
         total_km = km_end - km_start
+        monthly_km_map[key] = total_km
         # Igual que el cálculo anual: se excluye el último repostaje del tramo.
         total_liters = sum(liters for _, liters in entries[:-1])
         if total_liters <= 0:
@@ -87,6 +91,7 @@ def fuel_consumption_by_vehicle(
             "vehicle_plate": vehicles.get(r.vehicle_id, Vehicle(plate="?")).plate,
             "month": r.month,
             "total_liters": float(r.total_liters or 0),
+            "total_km": monthly_km_map.get((r.vehicle_id, r.month)),
             "liters_per_100km": monthly_l100_map.get((r.vehicle_id, r.month)),
             "subtotal_amount": float(r.subtotal_amount) if r.subtotal_amount is not None else None,
             "tax_amount": float(r.tax_amount) if r.tax_amount is not None else None,

@@ -24,6 +24,19 @@
   .list-panel .form-control:focus, .list-panel .form-select:focus { border-color: rgba(77,163,255,.4); box-shadow: none; }
   .list-panel .page-link { background: #fff; border-color: var(--stroke); color: #123a63; }
   .list-panel .page-item.active .page-link { background: #123a63; border-color: #123a63; color: #fff; }
+  .totals-card {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(130px, 1fr));
+    gap: 10px;
+  }
+  .totals-tile {
+    border: 1px solid var(--stroke);
+    border-radius: 12px;
+    padding: 10px 12px;
+    background: #f7fbff;
+  }
+  .totals-label { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
+  .totals-value { font-weight: 700; font-size: 16px; color: #123a63; }
 </style>
 {% endblock %}
 {% block content %}
@@ -65,6 +78,29 @@
 
     <div class="card">
       <div class="card-body">
+        <div class="totals-card">
+          <div class="totals-tile">
+            <div class="totals-label">Registros filtrados</div>
+            <div class="totals-value">{{ totals.count }}</div>
+          </div>
+          <div class="totals-tile">
+            <div class="totals-label">Base total</div>
+            <div class="totals-value">{{ "%.2f"|format(totals.subtotal or 0) }} €</div>
+          </div>
+          <div class="totals-tile">
+            <div class="totals-label">IVA total</div>
+            <div class="totals-value">{{ "%.2f"|format(totals.tax or 0) }} €</div>
+          </div>
+          <div class="totals-tile">
+            <div class="totals-label">Total</div>
+            <div class="totals-value">{{ "%.2f"|format(totals.total or 0) }} €</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-body">
         <table class="table align-middle">
           <thead>
             <tr>
@@ -76,6 +112,7 @@
               <th>IVA</th>
               <th>Total</th>
               <th>Doc</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -89,10 +126,13 @@
               <td>{% if m.tax_amount is not none %}{{ "%.2f"|format(m.tax_amount) }} €{% else %}-{% endif %}</td>
               <td>{{ "%.2f"|format(m.total_amount) }} €</td>
               <td><a href="{{ url_for('web.document_detail', did=m.document_id) }}" class="btn btn-sm btn-outline-primary">Ver</a></td>
+              <td class="text-end">
+                <a href="{{ url_for('web.maintenance_edit', mid=m.id, next=request.full_path) }}" class="btn btn-sm btn-outline-secondary">Editar</a>
+              </td>
             </tr>
             {% endfor %}
             {% if not pagination.items %}
-            <tr><td colspan="8" class="text-center text-secondary py-4">No hay mantenimientos registrados.</td></tr>
+            <tr><td colspan="9" class="text-center text-secondary py-4">No hay mantenimientos registrados.</td></tr>
             {% endif %}
           </tbody>
         </table>
