@@ -37,6 +37,21 @@
   }
   .totals-label { color: var(--muted); font-size: 12px; margin-bottom: 4px; }
   .totals-value { font-weight: 700; font-size: 16px; color: #123a63; }
+  .chart-list { display: grid; gap: 10px; }
+  .chart-row { display: grid; grid-template-columns: 90px 1fr 120px; align-items: center; gap: 10px; }
+  .chart-plate { font-weight: 700; color: #123a63; font-size: 13px; }
+  .chart-bar-wrap {
+    height: 18px;
+    background: #edf3fb;
+    border: 1px solid var(--stroke);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .chart-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #2f6ba3 0%, #4e8bc4 100%);
+  }
+  .chart-value { text-align: right; font-weight: 700; color: #123a63; font-size: 13px; }
 </style>
 {% endblock %}
 {% block content %}
@@ -96,6 +111,28 @@
             <div class="totals-value">{{ "%.2f"|format(totals.total or 0) }} €</div>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-body">
+        <h6 class="mb-3">Gasto por camión sin IVA (según filtro aplicado)</h6>
+        {% if spend_by_vehicle %}
+        <div class="chart-list">
+          {% for item in spend_by_vehicle %}
+          {% set percent = ((item.total / max_vehicle_total) * 100) if max_vehicle_total > 0 else 0 %}
+          <div class="chart-row">
+            <div class="chart-plate">{{ item.plate }}</div>
+            <div class="chart-bar-wrap">
+              <div class="chart-bar" style="width: {{ '%.2f'|format(percent) }}%;"></div>
+            </div>
+            <div class="chart-value">{{ "%.2f"|format(item.total) }} €</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">Sin datos para la gráfica con el filtro actual.</p>
+        {% endif %}
       </div>
     </div>
 

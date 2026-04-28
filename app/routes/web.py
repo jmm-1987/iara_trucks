@@ -424,6 +424,26 @@ def maintenance_list():
         "count": int(totals_row.count or 0),
     }
 
+    by_vehicle_rows = (
+        q.with_entities(
+            MaintenanceEntry.vehicle_id.label("vehicle_id"),
+            Vehicle.plate.label("plate"),
+            func.coalesce(func.sum(MaintenanceEntry.subtotal_amount), 0).label("total"),
+        )
+        .group_by(MaintenanceEntry.vehicle_id, Vehicle.plate)
+        .order_by(func.coalesce(func.sum(MaintenanceEntry.subtotal_amount), 0).desc())
+        .all()
+    )
+    spend_by_vehicle = [
+        {
+            "vehicle_id": r.vehicle_id,
+            "plate": r.plate or "-",
+            "total": float(r.total or 0),
+        }
+        for r in by_vehicle_rows
+    ]
+    max_vehicle_total = max((item["total"] for item in spend_by_vehicle), default=0)
+
     pagination = q.order_by(MaintenanceEntry.date.desc(), MaintenanceEntry.id.desc()).paginate(
         page=page, per_page=PER_PAGE
     )
@@ -432,6 +452,8 @@ def maintenance_list():
         "maintenance/list.html",
         pagination=pagination,
         totals=totals,
+        spend_by_vehicle=spend_by_vehicle,
+        max_vehicle_total=max_vehicle_total,
         vehicles=vehicles,
         filters={
             "vehicle_id": vehicle_id,
