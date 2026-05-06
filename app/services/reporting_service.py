@@ -101,6 +101,88 @@ def fuel_consumption_by_vehicle(
     ]
 
 
+def fuel_consumption_summary_by_vehicle(
+    vehicle_id: int | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> list[dict]:
+    """
+    Resumen de combustible: una línea por vehículo (sin desglose mensual).
+    - Litros/importe: suma contable de tickets en el periodo.
+    - Km tramo y L/100km: calculados por odómetro (requiere >=2 tickets con km).
+    """
+    q = db.session.query(
+        FuelEntry.vehicle_id,
+        func.sum(FuelEntry.liters).label("total_liters"),
+        func.sum(FuelEntry.subtotal_amount).label("subtotal_amount"),
+        func.sum(FuelEntry.tax_amount).label("tax_amount"),
+        func.sum(FuelEntry.total_amount).label("total_amount"),
+    ).group_by(FuelEntry.vehicle_id)
+
+    if vehicle_id:
+        q = q.filter(FuelEntry.vehicle_id == vehicle_id)
+    if date_from:
+        q = q.filter(FuelEntry.date >= date_from)
+    if date_to:
+        q = q.filter(FuelEntry.date <= date_to)
+
+    rows = q.all()
+    vehicles = {v.id: v for v in Vehicle.query.filter(Vehicle.active == True).all()}
+
+    # Km tramo y L/100km por vehículo en el periodo
+    km_q = FuelEntry.query.filter(FuelEntry.kilometers.isnot(None))
+    if vehicle_id:
+        km_q = km_q.filter(FuelEntry.vehicle_id == vehicle_id)
+    if date_from:
+        km_q = km_q.filter(FuelEntry.date >= date_from)
+    if date_to:
+        km_q = km_q.filter(FuelEntry.date <= date_to)
+    km_rows = km_q.order_by(FuelEntry.vehicle_id.asc(), FuelEntry.date.asc(), FuelEntry.id.asc()).all()
+
+    entries_by_vehicle: dict[int, list[FuelEntry]] = {}
+    for e in km_rows:
+        entries_by_vehicle.setdefault(e.vehicle_id, []).append(e)
+
+    stats_by_vehicle: dict[int, dict[str, float | int | None]] = {}
+    for vid, entries in entries_by_vehicle.items():
+        if len(entries) < 2:
+            stats_by_vehicle[vid] = {"total_km": None, "liters_per_100km": None}
+            continue
+        km_start = entries[0].kilometers
+        km_end = entries[-1].kilometers
+        if km_start is None or km_end is None or km_end <= km_start:
+            stats_by_vehicle[vid] = {"total_km": None, "liters_per_100km": None}
+            continue
+        total_km = int(km_end - km_start)
+        total_liters_for_tramo = sum(float(e.liters or 0) for e in entries[:-1])
+        if total_km > 0 and total_liters_for_tramo > 0:
+            l100 = round((total_liters_for_tramo / total_km) * 100, 2)
+        else:
+            l100 = None
+        stats_by_vehicle[vid] = {"total_km": total_km, "liters_per_100km": l100}
+
+    result: list[dict] = []
+    for r in rows:
+        vid = int(r.vehicle_id)
+        stats = stats_by_vehicle.get(vid) or {"total_km": None, "liters_per_100km": None}
+        result.append(
+            {
+                "vehicle_id": vid,
+                "vehicle_plate": vehicles.get(vid, Vehicle(plate="?")).plate,
+                "total_liters": float(r.total_liters or 0),
+                "total_km": stats.get("total_km"),
+                "liters_per_100km": stats.get("liters_per_100km"),
+                "subtotal_amount": float(r.subtotal_amount) if r.subtotal_amount is not None else None,
+                "tax_amount": float(r.tax_amount) if r.tax_amount is not None else None,
+                "total_amount": float(r.total_amount or 0),
+            }
+        )
+
+    # Ordenar por vehículo (matrícula) para que sea estable en UI.
+    result.sort(key=lambda x: (x.get("vehicle_plate") or ""))
+    return result
+
+
 def calculate_fuel_consumption_stats(vehicle_id: int, date_from: date | None = None, date_to: date | None = None) -> dict:
     """
     Calcula estadísticas de consumo: litros/100km y coste/km.
@@ -109,7 +191,7 @@ def calculate_fuel_consumption_stats(vehicle_id: int, date_from: date | None = N
     q = FuelEntry.query.filter(
         FuelEntry.vehicle_id == vehicle_id,
         FuelEntry.kilometers.isnot(None)
-    ).order_by(FuelEntry.date.asc())
+    ).order_by(FuelEntry.date.asc(), FuelEntry.id.asc())
     
     if date_from:
         q = q.filter(FuelEntry.date >= date_from)
@@ -461,6 +543,7 @@ def export_csv_report(
     vehicle_id: int | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
+    mode: str | None = None,
 ) -> str:
     """
     Genera un CSV según el tipo de reporte.
@@ -473,20 +556,59 @@ def export_csv_report(
     writer = csv.writer(output)
 
     if report_type == "fuel":
-        data = fuel_consumption_by_vehicle(vehicle_id, date_from, date_to)
-        writer.writerow(["vehicle_id", "vehicle_plate", "month", "total_liters", "subtotal_amount", "tax_amount", "total_amount"])
-        for row in data:
+        mode_norm = (mode or "").strip().lower()
+        if mode_norm == "summary":
+            data = fuel_consumption_summary_by_vehicle(vehicle_id, date_from, date_to)
             writer.writerow(
                 [
-                    row["vehicle_id"],
-                    row["vehicle_plate"],
-                    row["month"],
-                    row["total_liters"],
-                    row["subtotal_amount"],
-                    row["tax_amount"],
-                    row["total_amount"],
+                    "vehicle_id",
+                    "vehicle_plate",
+                    "total_liters",
+                    "total_km",
+                    "liters_per_100km",
+                    "subtotal_amount",
+                    "tax_amount",
+                    "total_amount",
                 ]
             )
+            for row in data:
+                writer.writerow(
+                    [
+                        row["vehicle_id"],
+                        row["vehicle_plate"],
+                        row["total_liters"],
+                        row["total_km"],
+                        row["liters_per_100km"],
+                        row["subtotal_amount"],
+                        row["tax_amount"],
+                        row["total_amount"],
+                    ]
+                )
+        else:
+            data = fuel_consumption_by_vehicle(vehicle_id, date_from, date_to)
+            writer.writerow(
+                [
+                    "vehicle_id",
+                    "vehicle_plate",
+                    "month",
+                    "total_liters",
+                    "subtotal_amount",
+                    "tax_amount",
+                    "total_amount",
+                ]
+            )
+            for row in data:
+                writer.writerow(
+                    [
+                        row["vehicle_id"],
+                        row["vehicle_plate"],
+                        row["month"],
+                        row["total_liters"],
+                        row["subtotal_amount"],
+                        row["tax_amount"],
+                        row["total_amount"],
+                    ]
+                )
     elif report_type == "expenses":
         data = expenses_by_category(vehicle_id, date_from, date_to)
         writer.writerow(["vehicle_id", "vehicle_plate", "category", "subtotal_amount", "tax_amount", "total_amount"])

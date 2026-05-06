@@ -49,6 +49,7 @@ from app.services.reporting_service import (
     expenses_by_category,
     export_csv_report,
     fuel_consumption_by_vehicle,
+    fuel_consumption_summary_by_vehicle,
     get_vehicle_statistics,
     upcoming_due_dates,
 )
@@ -717,21 +718,36 @@ def _is_km_consistent_for_vehicle(
     kilometers: int | None,
     exclude_fuel_entry_id: int | None = None,
 ) -> bool:
-    """Valida que el odómetro mantenga orden temporal en el histórico del vehículo."""
+    """
+    Valida coherencia de odómetro contra los tickets más cercanos.
+
+    Nota: usamos vecino anterior/posterior (no todo el histórico) para permitir
+    corregir datos en cadena cuando ya existen inconsistencias antiguas.
+    """
     if kilometers is None:
         return True
-    q = FuelEntry.query.filter(
+    base_q = FuelEntry.query.filter(
         FuelEntry.vehicle_id == vehicle_id,
         FuelEntry.kilometers.isnot(None),
     )
     if exclude_fuel_entry_id:
-        q = q.filter(FuelEntry.id != exclude_fuel_entry_id)
-    entries = q.order_by(FuelEntry.date.asc(), FuelEntry.id.asc()).all()
-    for entry in entries:
-        if entry.date <= ticket_date and entry.kilometers > kilometers:
-            return False
-        if entry.date >= ticket_date and entry.kilometers < kilometers:
-            return False
+        base_q = base_q.filter(FuelEntry.id != exclude_fuel_entry_id)
+
+    prev_entry = (
+        base_q.filter(FuelEntry.date < ticket_date)
+        .order_by(FuelEntry.date.desc(), FuelEntry.id.desc())
+        .first()
+    )
+    next_entry = (
+        base_q.filter(FuelEntry.date > ticket_date)
+        .order_by(FuelEntry.date.asc(), FuelEntry.id.asc())
+        .first()
+    )
+
+    if prev_entry and prev_entry.kilometers is not None and prev_entry.kilometers > kilometers:
+        return False
+    if next_entry and next_entry.kilometers is not None and next_entry.kilometers < kilometers:
+        return False
     return True
 
 
@@ -990,7 +1006,10 @@ def fuel_entry_edit(fid):
             flash("Total debe ser válido.", "danger")
             return render_template("fuel/form.html", fuel=fuel, doc=doc, next_url=next_url)
         if not _is_km_consistent_for_vehicle(fuel.vehicle_id, new_date, kilometers, fuel.id):
-            flash("Los kilómetros no son coherentes con el histórico para esa fecha.", "danger")
+            flash(
+                "Los kilómetros no cuadran con el ticket anterior/posterior de ese vehículo para esa fecha.",
+                "danger",
+            )
             return render_template("fuel/form.html", fuel=fuel, doc=doc, next_url=next_url)
 
         if subtotal is None and tax is None:
@@ -1023,6 +1042,47 @@ def fuel_entry_edit(fid):
         return redirect(next_url)
 
     return render_template("fuel/form.html", fuel=fuel, doc=doc, next_url=next_url)
+
+
+@web_bp.route("/tickets/<int:fid>/eliminar", methods=["POST"])
+def fuel_entry_delete(fid):
+    """Borra un ticket de combustible y, si aplica, su documento asociado."""
+    fuel = FuelEntry.query.get_or_404(fid)
+    doc = fuel.document
+    next_url = request.form.get("next") or request.args.get("next") or url_for("web.reports", focus="consumos")
+
+    try:
+        db.session.delete(fuel)
+        db.session.flush()
+
+        # Si el documento no tiene más registros asociados, eliminarlo también.
+        if doc:
+            has_other_fuel = FuelEntry.query.filter(
+                FuelEntry.document_id == doc.id,
+                FuelEntry.id != fid,
+            ).first()
+            has_expense = ExpenseEntry.query.filter_by(document_id=doc.id).first()
+            has_maintenance = MaintenanceEntry.query.filter_by(document_id=doc.id).first()
+            has_reminder = Reminder.query.filter_by(document_id=doc.id).first()
+
+            if not has_other_fuel and not has_expense and not has_maintenance and not has_reminder:
+                if doc.file_path and doc.file_path != "manual":
+                    upload_dir = Path(current_app.config["UPLOAD_FOLDER"])
+                    file_path = upload_dir / doc.file_path
+                    if file_path.exists():
+                        try:
+                            file_path.unlink()
+                        except OSError:
+                            pass
+                db.session.delete(doc)
+
+        db.session.commit()
+        flash("Ticket eliminado correctamente.", "success")
+        return redirect(next_url)
+    except Exception as e:
+        db.session.rollback()
+        flash(f"No se pudo eliminar el ticket: {str(e)}", "danger")
+        return redirect(url_for("web.fuel_entry_edit", fid=fid, next=next_url))
 
 
 @web_bp.route("/mantenimientos/<int:mid>/editar", methods=["GET", "POST"])
@@ -1095,7 +1155,10 @@ def reports():
         df = date.today() - timedelta(days=365)
         dt = date.today()
 
-    fuel_data = fuel_consumption_by_vehicle(vehicle_id, df, dt)
+    if focus == "consumos":
+        fuel_data = fuel_consumption_summary_by_vehicle(vehicle_id, df, dt)
+    else:
+        fuel_data = fuel_consumption_by_vehicle(vehicle_id, df, dt)
     # Detalle de tickets de combustible con kilómetros (para informes)
     fuel_tickets_q = FuelEntry.query.filter(
         FuelEntry.date >= df,
@@ -1111,8 +1174,15 @@ def reports():
     )
     # Consumo por repostaje con ventana móvil (suaviza ruido entre tickets).
     per_refuel_consumption: dict[int, float | None] = {}
+    per_refuel_alerts: dict[int, dict] = {}
+    per_ticket_alerts: dict[int, list[dict]] = {}
+    per_ticket_tramo: dict[int, dict] = {}
     fuel_tickets_asc = sorted(fuel_tickets, key=lambda x: (x.vehicle_id, x.date, x.id))
     moving_window_size = 5
+    # Heurísticas: detectar tramos desvirtuados (posible ticket faltante / km incorrectos).
+    MIN_PLAUSIBLE_L100 = 18.0
+    MAX_PLAUSIBLE_L100 = 45.0
+    MAX_PLAUSIBLE_INTERVAL_KM = 2700.0
     tickets_by_vehicle: dict[int, list[FuelEntry]] = {}
     for t in fuel_tickets_asc:
         tickets_by_vehicle.setdefault(t.vehicle_id, []).append(t)
@@ -1134,8 +1204,11 @@ def reports():
             intervals.append(
                 {
                     "ticket_id": curr.id,
+                    "prev_ticket_id": prev.id,
                     "liters": float(prev.liters),
                     "km": float(curr.kilometers - prev.kilometers),
+                    "km_start": int(prev.kilometers),
+                    "km_end": int(curr.kilometers),
                 }
             )
 
@@ -1143,15 +1216,99 @@ def reports():
         for idx, interval in enumerate(intervals):
             if interval["liters"] is None or interval["km"] is None:
                 per_refuel_consumption[interval["ticket_id"]] = None
+                per_ticket_tramo[interval["ticket_id"]] = {
+                    "km": None,
+                    "km_start": None,
+                    "km_end": None,
+                    "prev_ticket_id": None,
+                }
+                per_refuel_alerts[interval["ticket_id"]] = {
+                    "level": "warning",
+                    "reason": "Tramo no calculable (km faltante o no creciente). Revisa si falta un ticket o si el odómetro está mal.",
+                }
                 continue
 
             window = intervals[max(0, idx - moving_window_size + 1): idx + 1]
             liters_sum = sum(w["liters"] for w in window if w["liters"] is not None and w["km"] is not None)
             km_sum = sum(w["km"] for w in window if w["liters"] is not None and w["km"] is not None)
             if km_sum > 0 and liters_sum > 0:
-                per_refuel_consumption[interval["ticket_id"]] = round((liters_sum / km_sum) * 100, 2)
+                l100 = round((liters_sum / km_sum) * 100, 2)
+                per_refuel_consumption[interval["ticket_id"]] = l100
+                per_ticket_tramo[interval["ticket_id"]] = {
+                    "km": int(interval["km"]),
+                    "km_start": interval.get("km_start"),
+                    "km_end": interval.get("km_end"),
+                    "prev_ticket_id": interval.get("prev_ticket_id"),
+                    "l100_direct": None,
+                }
+                # Para avisos usamos SIEMPRE el tramo directo (prev->curr), no la ventana móvil,
+                # para que al corregir un ticket el aviso desaparezca inmediatamente.
+                interval_l100 = round((interval["liters"] / interval["km"]) * 100, 2) if interval["km"] > 0 else None
+                per_ticket_tramo[interval["ticket_id"]]["l100_direct"] = interval_l100
+                reasons: list[str] = []
+                if interval["km"] > MAX_PLAUSIBLE_INTERVAL_KM:
+                    reasons.append(f"Tramo muy largo ({int(interval['km'])} km)")
+                if interval_l100 is not None and interval_l100 < MIN_PLAUSIBLE_L100:
+                    reasons.append(f"Consumo muy bajo en tramo ({interval_l100} L/100)")
+                if interval_l100 is not None and interval_l100 > MAX_PLAUSIBLE_L100:
+                    reasons.append(f"Consumo muy alto en tramo ({interval_l100} L/100)")
+                if reasons:
+                    per_refuel_alerts[interval["ticket_id"]] = {
+                        "level": "danger",
+                        "reason": " / ".join(reasons) + ". Posible ticket faltante entre medias o km incorrectos.",
+                    }
             else:
                 per_refuel_consumption[interval["ticket_id"]] = None
+                per_ticket_tramo[interval["ticket_id"]] = {
+                    "km": int(interval["km"]) if interval["km"] is not None else None,
+                    "km_start": interval.get("km_start"),
+                    "km_end": interval.get("km_end"),
+                    "prev_ticket_id": interval.get("prev_ticket_id"),
+                    "l100_direct": None,
+                }
+                per_refuel_alerts[interval["ticket_id"]] = {
+                    "level": "warning",
+                    "reason": "Tramo no calculable (km o litros insuficientes).",
+                }
+
+    # Avisadores por ticket (para cuadrar): km faltantes, litros faltantes, duplicados, tramo sospechoso, etc.
+    # 1) Duplicados por (vehículo, fecha, km, litros, base) dentro del listado.
+    seen_sig: dict[tuple, int] = {}
+    duplicates: set[int] = set()
+    for fe in fuel_tickets_asc:
+        km = fe.kilometers or (fe.document and fe.document.kilometers)
+        base = float((fe.subtotal_amount or fe.total_amount) or 0)
+        sig = (fe.vehicle_id, fe.date, km, float(fe.liters or 0), round(base, 2))
+        if sig in seen_sig:
+            duplicates.add(fe.id)
+            duplicates.add(seen_sig[sig])
+        else:
+            seen_sig[sig] = fe.id
+
+    # 2) Avisos básicos por ticket
+    for fe in fuel_tickets:
+        alerts: list[dict] = []
+        km = fe.kilometers or (fe.document and fe.document.kilometers)
+        if fe.liters is None or float(fe.liters or 0) <= 0:
+            alerts.append({"level": "warning", "short": "L?", "reason": "Litros faltantes o 0. No se puede calcular consumo fiable."})
+        if km is None:
+            alerts.append({"level": "warning", "short": "KM?", "reason": "Kilómetros faltantes. No se puede calcular el tramo."})
+        if fe.id in duplicates:
+            alerts.append({"level": "danger", "short": "DUP", "reason": "Posible ticket duplicado (mismo vehículo/fecha/km/litros/importe)."})
+
+        # Añadir aviso del tramo/consumo calculado (si existe)
+        tramo_alert = per_refuel_alerts.get(fe.id)
+        if tramo_alert:
+            short = "TRAMO" if tramo_alert.get("level") == "danger" else "REV"
+            alerts.append(
+                {
+                    "level": tramo_alert.get("level") or "warning",
+                    "short": short,
+                    "reason": tramo_alert.get("reason") or "Tramo sospechoso.",
+                }
+            )
+
+        per_ticket_alerts[fe.id] = alerts
     expense_data = expenses_by_category(vehicle_id, df, dt)
     # Mostrar todos los vencimientos activos en reportes
     reminders_data = upcoming_due_dates(None)
@@ -1164,6 +1321,9 @@ def reports():
         fuel_data=fuel_data,
         fuel_tickets=fuel_tickets,
         per_refuel_consumption=per_refuel_consumption,
+        per_refuel_alerts=per_refuel_alerts,
+        per_ticket_alerts=per_ticket_alerts,
+        per_ticket_tramo=per_ticket_tramo,
         expense_data=expense_data,
         reminders_data=reminders_data,
         vehicles=vehicles,
@@ -1179,10 +1339,11 @@ def report_export(report_type):
     vehicle_id = request.args.get("vehicle_id", type=int)
     date_from = request.args.get("date_from")
     date_to = request.args.get("date_to")
+    mode = (request.args.get("mode") or "").strip().lower()
     df = date.fromisoformat(date_from) if date_from else None
     dt = date.fromisoformat(date_to) if date_to else None
 
-    csv_content = export_csv_report(report_type, vehicle_id, df, dt)
+    csv_content = export_csv_report(report_type, vehicle_id, df, dt, mode=mode)
     from flask import Response
 
     return Response(

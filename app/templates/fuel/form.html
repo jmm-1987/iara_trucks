@@ -23,24 +23,24 @@
 
         <div class="col-md-4">
           <label class="form-label">Litros</label>
-          <input type="number" name="liters" class="form-control" step="0.01" min="0.001" value="{{ fuel.liters if fuel.liters is not none else '' }}" required>
+          <input type="text" name="liters" class="form-control" inputmode="decimal" placeholder="Ej. 540,59" value="{{ fuel.liters if fuel.liters is not none else '' }}" required>
         </div>
         <div class="col-md-4">
           <label class="form-label">Precio/litro (€)</label>
-          <input type="number" name="price_per_liter" class="form-control" step="0.0001" min="0.0001" value="{{ fuel.price_per_liter if fuel.price_per_liter is not none else '' }}" required>
+          <input type="text" name="price_per_liter" class="form-control" inputmode="decimal" placeholder="Ej. 1,9850" value="{{ fuel.price_per_liter if fuel.price_per_liter is not none else '' }}" required>
         </div>
         <div class="col-md-4">
           <label class="form-label">Total (€)</label>
-          <input type="number" name="total_amount" class="form-control" step="0.01" min="0" value="{{ fuel.total_amount if fuel.total_amount is not none else '' }}" required>
+          <input type="text" name="total_amount" class="form-control" inputmode="decimal" placeholder="Ej. 1073,07" value="{{ fuel.total_amount if fuel.total_amount is not none else '' }}" required>
         </div>
 
         <div class="col-md-4">
           <label class="form-label">Base (€)</label>
-          <input type="number" name="subtotal_amount" class="form-control" step="0.01" min="0" value="{{ fuel.subtotal_amount if fuel.subtotal_amount is not none else '' }}">
+          <input type="text" name="subtotal_amount" class="form-control" inputmode="decimal" placeholder="Ej. 886,83" value="{{ fuel.subtotal_amount if fuel.subtotal_amount is not none else '' }}">
         </div>
         <div class="col-md-4">
           <label class="form-label">IVA (€)</label>
-          <input type="number" name="tax_amount" class="form-control" step="0.01" min="0" value="{{ fuel.tax_amount if fuel.tax_amount is not none else '' }}">
+          <input type="text" name="tax_amount" class="form-control" inputmode="decimal" placeholder="Ej. 186,24" value="{{ fuel.tax_amount if fuel.tax_amount is not none else '' }}">
         </div>
         <div class="col-md-4">
           <label class="form-label">Estación / proveedor</label>
@@ -56,6 +56,49 @@
         {% endif %}
       </div>
     </form>
+    <form method="post"
+          action="{{ url_for('web.fuel_entry_delete', fid=fuel.id, next=next_url) }}"
+          class="mt-2"
+          onsubmit="return confirm('¿Seguro que quieres eliminar este ticket? Esta acción no se puede deshacer.');">
+      <input type="hidden" name="next" value="{{ next_url }}">
+      <button type="submit" class="btn btn-outline-danger">Eliminar ticket</button>
+    </form>
+
+    {% if doc and doc.file_path and doc.file_path != 'manual' %}
+    {% set ext = (doc.file_path.rsplit('.', 1)[-1] | lower) %}
+    <hr class="my-4">
+    <div>
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <h2 class="h6 mb-0">Ticket adjunto (comprobación)</h2>
+        <a class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener"
+           href="{{ url_for('web.serve_upload', filename=doc.file_path) }}">
+          Abrir ticket
+        </a>
+      </div>
+
+      <div class="mt-3">
+        {% if ext in ['jpg', 'jpeg', 'png', 'webp', 'gif'] %}
+          <img
+            src="{{ url_for('web.serve_upload', filename=doc.file_path) }}"
+            alt="Ticket combustible"
+            class="img-fluid rounded border"
+            style="max-height: 720px; width: 100%; object-fit: contain; background: rgba(0,0,0,0.03);"
+          >
+        {% elif ext == 'pdf' %}
+          <iframe
+            src="{{ url_for('web.serve_upload', filename=doc.file_path) }}"
+            title="Ticket combustible (PDF)"
+            class="w-100 rounded border"
+            style="height: 720px; background: white;"
+          ></iframe>
+        {% else %}
+          <p class="text-muted mb-0">
+            Archivo adjunto no previsualizable ({{ ext }}). Usa “Abrir ticket”.
+          </p>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

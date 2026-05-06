@@ -184,7 +184,7 @@
     </div>
 
     <div class="export-bar">
-        <a href="{{ url_for('web.report_export', report_type='fuel', vehicle_id=filters.vehicle_id, date_from=filters.date_from, date_to=filters.date_to) }}">
+        <a href="{{ url_for('web.report_export', report_type='fuel', vehicle_id=filters.vehicle_id, date_from=filters.date_from, date_to=filters.date_to, mode=('summary' if focus == 'consumos' else 'monthly')) }}">
             <i class="bi bi-file-earmark-spreadsheet"></i> Exportar combustible CSV
         </a>
         {% if focus != 'consumos' %}
@@ -255,16 +255,15 @@
     </div>
     {% else %}
     <div class="report-card">
-        <div class="report-card-header">Consumo combustible (litros y coste por mes)</div>
+        <div class="report-card-header">Consumo combustible (resumen por camión)</div>
         <div class="report-card-body">
             {% if fuel_data %}
             <table class="report-table">
-                <thead><tr><th>Vehículo</th><th>Mes</th><th>Litros</th><th>Km tramo</th><th>L/100 km</th><th>Base</th><th>IVA</th><th>Total</th></tr></thead>
+                <thead><tr><th>Vehículo</th><th>Litros</th><th>Km tramo</th><th>L/100 km</th><th>Base</th><th>IVA</th><th>Total</th></tr></thead>
                 <tbody>
                     {% for r in fuel_data %}
                     <tr>
                         <td>{{ r.vehicle_plate }}</td>
-                        <td>{{ r.month }}</td>
                         <td>{{ "%.1f"|format(r.total_liters or 0) }}</td>
                         <td>{% if r.total_km is not none %}{{ r.total_km }}{% else %}-{% endif %}</td>
                         <td>{% if r.liters_per_100km is not none %}{{ "%.2f"|format(r.liters_per_100km) }}{% else %}-{% endif %}</td>
@@ -295,6 +294,7 @@
                         <th>L/100 km (ventana móvil)</th>
                         <th>Base (sin IVA)</th>
                         <th>Kilómetros</th>
+                        <th>Avisos</th>
                         <th></th>
                     </tr>
                 </thead>
@@ -307,17 +307,53 @@
                         <td>{{ "%.2f"|format(fe.liters or 0) }}</td>
                         <td>
                             {% set l100 = per_refuel_consumption.get(fe.id) %}
+                            {% set alert = per_refuel_alerts.get(fe.id) %}
                             {% if l100 is not none %}
                                 {{ "%.2f"|format(l100) }}
+                                {% if alert %}
+                                    <span class="report-badge {{ 'danger' if alert.level == 'danger' else 'warning' }}" title="{{ alert.reason }}">!</span>
+                                {% endif %}
                             {% else %}
                                 -
+                                {% if alert %}
+                                    <span class="report-badge {{ 'danger' if alert.level == 'danger' else 'warning' }}" title="{{ alert.reason }}">!</span>
+                                {% endif %}
                             {% endif %}
                         </td>
                         <td>
                             {% set base = fe.subtotal_amount or fe.total_amount %}
                             {{ "%.2f"|format(base or 0) }} €
                         </td>
-                        <td>{{ km if km is not none else '-' }}</td>
+                        <td>
+                            {{ km if km is not none else '-' }}
+                            {% set tramo = per_ticket_tramo.get(fe.id) %}
+                            {% if km is not none and tramo and tramo.km is not none and tramo.km_end is not none and tramo.km_start is not none and tramo.km_end > tramo.km_start %}
+                                <span class="text-success" title="Kilómetros ascendentes respecto al ticket anterior">↑</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% set alerts = per_ticket_alerts.get(fe.id) or [] %}
+                            {% set tramo = per_ticket_tramo.get(fe.id) %}
+                            {% if tramo and tramo.km is not none %}
+                                <span class="report-badge secondary" title="Tramo ticket anterior -> actual ({{ tramo.km_start }} a {{ tramo.km_end }} km)">
+                                    {{ tramo.km }} km
+                                </span>
+                                {% if tramo.l100_direct is not none %}
+                                    <span class="report-badge secondary" title="Consumo del tramo directo (no ventana móvil)">
+                                        {{ "%.2f"|format(tramo.l100_direct) }} L/100T
+                                    </span>
+                                {% endif %}
+                            {% else %}
+                                <span class="report-badge secondary" title="Tramo no disponible">- km</span>
+                            {% endif %}
+                            {% if alerts %}
+                                {% for a in alerts %}
+                                    <span class="report-badge {{ 'danger' if a.level == 'danger' else 'warning' }}" title="{{ a.reason }}">{{ a.short }}</span>
+                                {% endfor %}
+                            {% else %}
+                                <span class="report-badge secondary" title="Sin avisos">OK</span>
+                            {% endif %}
+                        </td>
                         <td class="text-end">
                             <a href="{{ url_for('web.fuel_entry_edit', fid=fe.id, next=request.full_path) }}" class="btn btn-sm btn-outline-primary">
                                 Editar
