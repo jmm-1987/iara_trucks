@@ -66,7 +66,10 @@ if __name__ == "__main__":
         ensure_schema_compatibility()
         print("✅ Base de datos inicializada")
 
-    # Bot Telegram en segundo plano
+    # Cola de tickets Telegram + bot en segundo plano
+    from app.services.telegram_queue_service import init_ticket_worker
+
+    init_ticket_worker(app)
     t = threading.Thread(target=run_telegram_polling, args=(app,), daemon=True)
     t.start()
 

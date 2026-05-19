@@ -233,7 +233,7 @@
             <tbody>
               {% for f in fuel_by_month %}
               <tr>
-                <td>{{ f.month }}</td>
+                <td>{{ f.month|month_format }}</td>
                 <td>{{ "%.1f"|format(f.total_liters) }}</td>
                 <td>{% if f.subtotal_amount %}{{ "%.2f"|format(f.subtotal_amount) }} €{% else %}-{% endif %}</td>
                 <td>{% if f.tax_amount %}{{ "%.2f"|format(f.tax_amount) }} €{% else %}-{% endif %}</td>

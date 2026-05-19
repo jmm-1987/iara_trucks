@@ -95,7 +95,8 @@
                     <th>Tipo</th>
                     <th>Estado</th>
                     <th>Vencimiento</th>
-                    <th>Fecha</th>
+                    <th>Subido</th>
+                    <th>Fecha doc.</th>
                     <th>Importe</th>
                     <th></th>
                 </tr>
@@ -123,6 +124,7 @@
                         {% endif %}
                     </td>
                     <td>{{ d.uploaded_at|date_format }}</td>
+                    <td>{{ d.issue_date|date_format }}</td>
                     <td>{% if d.total_amount %}{{ "%.2f"|format(d.total_amount) }} {{ d.currency or 'EUR' }}{% else %}-{% endif %}</td>
                     <td class="text-end">
                         <a href="{{ url_for('web.document_detail', did=d.id) }}" class="btn btn-sm btn-outline-primary">Ver</a>

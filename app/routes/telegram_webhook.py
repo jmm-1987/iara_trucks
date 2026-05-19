@@ -10,13 +10,24 @@ from pathlib import Path
 
 from flask import Blueprint, request, current_app
 
-from app.models import Document, DocumentStatus, FuelEntry, User, Vehicle, TelegramSession, db
+from app.models import Document, DocumentStatus, DocumentType, FuelEntry, User, Vehicle, TelegramSession, db
+from app.services.telegram_queries_service import (
+    compliance_report,
+    fuel_report,
+    maintenance_report,
+    split_telegram_message,
+    vehicle_buttons,
+)
 from app.services.document_processor import (
+    apply_user_field_to_document,
     build_summary_for_telegram,
+    ensure_document_records_after_vehicle_assigned,
+    ensure_fuel_entry_for_document,
     process_document,
 )
+from app.services.telegram_queue_service import TelegramTicketJob, enqueue_ticket
 from app.services.dedup_service import find_duplicate_by_hash, sha256_bytes
-from app.services.extraction_service import get_missing_critical_fields
+from app.services.extraction_service import get_pending_document_fields
 from app.services.telegram_service import (
     get_file,
     send_message,
@@ -85,20 +96,46 @@ def clear_pending_state(user_id: int) -> None:
 def handle_start(chat_id: int, token: str) -> None:
     """Muestra el menú principal con botones."""
     buttons = [
-        [{"text": "⛽ Subir ticket", "callback_data": "action_upload_ticket"}],
-        [{"text": "📄 Subir documento", "callback_data": "action_upload_document"}],
-        [{"text": "❌ Cancelar", "callback_data": "action_cancel"}],
+        [{"text": "⛽ Consumos", "callback_data": "menu_fuel"}],
+        [{"text": "🔧 Mantenimientos", "callback_data": "menu_maintenance"}],
+        [
+            {"text": "📋 ITV", "callback_data": "menu_itv"},
+            {"text": "🛡 Seguros", "callback_data": "menu_insurance"},
+        ],
+        [{"text": "📟 Tacógrafo", "callback_data": "menu_tachograph"}],
+        [
+            {"text": "⛽ Subir ticket", "callback_data": "action_upload_ticket"},
+            {"text": "📄 Subir doc", "callback_data": "action_upload_document"},
+        ],
+        [{"text": "🚛 Vehículo", "callback_data": "menu_vehicle"}],
     ]
-    
-    txt = """🚗 <b>Gestión de Flotas - Bot</b>
 
-Selecciona una acción:"""
+    txt = """🚗 <b>Gestión de Flotas</b>
+
+Consulta ITV, seguros, tacógrafo, mantenimientos y consumos.
+
+📸 <b>Foto rápida</b>: ticket de gasoil (matrícula por OCR o la eliges tú).
+
+📄 <b>Subir ticket / Subir doc</b>: primero eliges vehículo, luego la foto."""
     send_message(
         token,
         chat_id,
         txt,
         reply_markup=build_inline_keyboard(buttons),
     )
+
+
+def send_paginated_report(chat_id: int, token: str, text: str, buttons: list | None = None) -> None:
+    """Envía informes largos en varios mensajes si hace falta."""
+    parts = split_telegram_message(text)
+    markup = build_inline_keyboard(buttons) if buttons else None
+    for i, part in enumerate(parts):
+        send_message(
+            token,
+            chat_id,
+            part,
+            reply_markup=markup if i == len(parts) - 1 and markup else None,
+        )
 
 
 def handle_vehiculo(chat_id: int, user_id: int, token: str) -> None:
@@ -152,6 +189,154 @@ def ask_for_plate(chat_id: int, user_id: int, token: str, action: str) -> None:
     )
 
 
+def ask_vehicle_for_document(
+    chat_id: int,
+    user_id: int,
+    token: str,
+    doc_id: int,
+    intro_text: str = "",
+) -> None:
+    """Muestra matrículas disponibles si el OCR no detectó vehículo."""
+    session = get_or_create_session(user_id)
+    session.pending_action = "waiting_plate_document"
+    session.pending_document_id = doc_id
+    db.session.commit()
+
+    vehicles = Vehicle.query.filter(Vehicle.active == True).order_by(Vehicle.plate).all()
+    if not vehicles:
+        send_message(
+            token,
+            chat_id,
+            intro_text + "\n\n⚠️ No hay vehículos activos. Crea uno desde el panel web.",
+        )
+        return
+
+    buttons: list[list[dict]] = []
+    row: list[dict] = []
+    for v in vehicles[:16]:
+        row.append({"text": v.plate, "callback_data": f"autoticket_v_{v.id}"})
+        if len(row) == 2:
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+    buttons.append([{"text": "◀️ Menú", "callback_data": "action_menu"}])
+
+    send_message(
+        token,
+        chat_id,
+        (intro_text + "\n\n" if intro_text else "") + "🚛 <b>Selecciona la matrícula del camión:</b>",
+        reply_markup=build_inline_keyboard(buttons),
+    )
+
+
+def continue_document_telegram_flow(
+    chat_id: int,
+    user_id: int,
+    token: str,
+    doc: Document,
+    extracted: dict,
+    *,
+    intro: str = "",
+    from_vehicle_assign: bool = False,
+) -> None:
+    """
+    Tras procesar o asignar vehículo: pide campos faltantes, km o cierra con menú.
+    No muestra «registrado» ni menú si aún faltan datos.
+    """
+    pending = get_pending_document_fields(
+        extracted, doc.doc_type, doc.vehicle_id, doc
+    )
+    if pending:
+        pf = pending[0]
+        session = get_or_create_session(user_id)
+        session.pending_document_id = doc.id
+        session.pending_action = f"waiting_field_{pf['field']}"
+        db.session.commit()
+        prefix = intro.strip() + "\n\n" if intro.strip() else ""
+        if from_vehicle_assign and doc.vehicle_id:
+            vehicle = Vehicle.query.get(doc.vehicle_id)
+            if vehicle:
+                prefix = f"✓ Vehículo: <b>{vehicle.plate}</b>\n\n"
+        send_message(token, chat_id, prefix + f"📋 {pf['prompt']}")
+        return
+
+    should_ask_km = False
+    if doc.doc_type == DocumentType.FUEL_TICKET.value and doc.vehicle_id:
+        should_ask_km = (
+            doc.kilometers is None or bool(extracted.get("km_needs_confirmation"))
+        )
+    if should_ask_km:
+        session = get_or_create_session(user_id)
+        session.pending_document_id = doc.id
+        session.pending_action = "waiting_km"
+        session.pending_vehicle_id = doc.vehicle_id
+        db.session.commit()
+        vehicle = Vehicle.query.get(doc.vehicle_id) if doc.vehicle_id else None
+        plate = vehicle.plate if vehicle else "vehículo"
+        send_message(
+            token,
+            chat_id,
+            (intro + "\n\n" if intro.strip() else "")
+            + f"✅ Ticket de <b>{plate}</b> registrado en consumos.\n"
+            "📏 Indica los kilómetros actuales (o escribe <code>skip</code>):",
+        )
+        return
+
+    tipo = DOC_TYPE_LABELS.get(doc.doc_type, doc.doc_type or "documento")
+    if doc.doc_type == DocumentType.FUEL_TICKET.value and doc.vehicle_id:
+        fe = ensure_fuel_entry_for_document(doc)
+        db.session.commit()
+        msg = (
+            "✅ Ticket guardado y añadido a consumos."
+            if fe
+            else "✅ Ticket guardado (revisa litros/total en el panel si no aparece en consumos)."
+        )
+    else:
+        msg = f"✅ Registrado como <b>{tipo}</b> en el sistema."
+    if intro.strip():
+        msg = intro.strip() + "\n\n" + msg
+    clear_pending_state(user_id)
+    send_message(token, chat_id, msg)
+    handle_start(chat_id, token)
+
+
+def finalize_document_after_vehicle(
+    chat_id: int,
+    user_id: int,
+    token: str,
+    doc_id: int,
+    vehicle_id: int,
+) -> None:
+    """Asocia vehículo elegido y completa registros (consumo, gasto, etc.)."""
+    doc = Document.query.get(doc_id)
+    vehicle = Vehicle.query.get(vehicle_id)
+    if not doc or not vehicle:
+        send_message(token, chat_id, "❌ No se pudo asociar el documento.")
+        clear_pending_state(user_id)
+        return
+
+    doc.vehicle_id = vehicle.id
+    ensure_document_records_after_vehicle_assigned(doc)
+    db.session.commit()
+
+    extracted: dict = {}
+    if doc.extracted_json:
+        try:
+            extracted = json.loads(doc.extracted_json)
+        except json.JSONDecodeError:
+            pass
+
+    continue_document_telegram_flow(
+        chat_id,
+        user_id,
+        token,
+        doc,
+        extracted,
+        from_vehicle_assign=True,
+    )
+
+
 def ask_for_kilometers(chat_id: int, user_id: int, token: str) -> None:
     """Pide los kilómetros después de subir un ticket de gasoil."""
     session = get_or_create_session(user_id)
@@ -166,24 +351,32 @@ def ask_for_kilometers(chat_id: int, user_id: int, token: str) -> None:
 
 
 def _is_km_value_consistent(vehicle_id: int, ticket_date, kilometers: int, current_document_id: int | None = None) -> bool:
-    """Valida que el odómetro no rompa la secuencia temporal."""
+    """Valida km contra ticket anterior/posterior (permite varios repostajes el mismo día)."""
     if not vehicle_id:
         return True
     from app.models import FuelEntry
 
-    q = FuelEntry.query.filter(
+    base_q = FuelEntry.query.filter(
         FuelEntry.vehicle_id == vehicle_id,
         FuelEntry.kilometers.isnot(None),
     )
     if current_document_id:
-        q = q.filter(FuelEntry.document_id != current_document_id)
-    entries = q.order_by(FuelEntry.date.asc(), FuelEntry.id.asc()).all()
-    effective_date = ticket_date
-    for entry in entries:
-        if entry.date <= effective_date and entry.kilometers > kilometers:
-            return False
-        if entry.date >= effective_date and entry.kilometers < kilometers:
-            return False
+        base_q = base_q.filter(FuelEntry.document_id != current_document_id)
+
+    prev_entry = (
+        base_q.filter(FuelEntry.date < ticket_date)
+        .order_by(FuelEntry.date.desc(), FuelEntry.id.desc())
+        .first()
+    )
+    next_entry = (
+        base_q.filter(FuelEntry.date > ticket_date)
+        .order_by(FuelEntry.date.asc(), FuelEntry.id.asc())
+        .first()
+    )
+    if prev_entry and prev_entry.kilometers is not None and prev_entry.kilometers > kilometers:
+        return False
+    if next_entry and next_entry.kilometers is not None and next_entry.kilometers < kilometers:
+        return False
     return True
 
 
@@ -205,20 +398,121 @@ def handle_callback_query(data: dict, token: str) -> None:
     except Exception:
         pass
 
-    if cb_data == "action_cancel":
+    if cb_data in ("action_cancel", "action_menu"):
         clear_pending_state(user.id)
-        send_message(token, chat_id, "✅ Operación cancelada.")
+        if cb_data == "action_cancel":
+            send_message(token, chat_id, "✅ Operación cancelada.")
         handle_start(chat_id, token)
         return
-    
+
+    if cb_data.startswith("autoticket_v_"):
+        vid = int(cb_data.replace("autoticket_v_", ""))
+        session = get_or_create_session(user.id)
+        doc_id = session.pending_document_id
+        if not doc_id:
+            send_message(token, chat_id, "⚠️ No hay ticket pendiente de asociar.")
+            handle_start(chat_id, token)
+            return
+        finalize_document_after_vehicle(chat_id, user.id, token, doc_id, vid)
+        return
+
+    if cb_data == "menu_vehicle":
+        handle_vehiculo(chat_id, user.id, token)
+        return
+
+    if cb_data == "menu_itv":
+        send_message(
+            token,
+            chat_id,
+            "📋 <b>ITV</b> — elige vehículo:",
+            reply_markup=build_inline_keyboard(vehicle_buttons("itv")),
+        )
+        return
+
+    if cb_data == "menu_insurance":
+        send_message(
+            token,
+            chat_id,
+            "🛡 <b>Seguros</b> — elige vehículo:",
+            reply_markup=build_inline_keyboard(vehicle_buttons("ins")),
+        )
+        return
+
+    if cb_data == "menu_tachograph":
+        send_message(
+            token,
+            chat_id,
+            "📟 <b>Tacógrafo</b> — elige vehículo:",
+            reply_markup=build_inline_keyboard(vehicle_buttons("tac")),
+        )
+        return
+
+    if cb_data == "menu_maintenance":
+        send_message(
+            token,
+            chat_id,
+            "🔧 <b>Mantenimientos</b> — elige vehículo:",
+            reply_markup=build_inline_keyboard(vehicle_buttons("mnt")),
+        )
+        return
+
+    if cb_data == "menu_fuel":
+        send_message(
+            token,
+            chat_id,
+            "⛽ <b>Consumos</b> — elige vehículo:",
+            reply_markup=build_inline_keyboard(vehicle_buttons("fuel")),
+        )
+        return
+
+    if cb_data == "itv_all":
+        send_paginated_report(chat_id, token, compliance_report("itv"), vehicle_buttons("itv"))
+        return
+    if cb_data.startswith("itv_v_"):
+        vid = int(cb_data.replace("itv_v_", ""))
+        send_paginated_report(chat_id, token, compliance_report("itv", vid), vehicle_buttons("itv"))
+        return
+
+    if cb_data == "ins_all":
+        send_paginated_report(chat_id, token, compliance_report("insurance"), vehicle_buttons("ins"))
+        return
+    if cb_data.startswith("ins_v_"):
+        vid = int(cb_data.replace("ins_v_", ""))
+        send_paginated_report(chat_id, token, compliance_report("insurance", vid), vehicle_buttons("ins"))
+        return
+
+    if cb_data == "tac_all":
+        send_paginated_report(chat_id, token, compliance_report("tachograph"), vehicle_buttons("tac"))
+        return
+    if cb_data.startswith("tac_v_"):
+        vid = int(cb_data.replace("tac_v_", ""))
+        send_paginated_report(chat_id, token, compliance_report("tachograph", vid), vehicle_buttons("tac"))
+        return
+
+    if cb_data == "mnt_all":
+        send_paginated_report(chat_id, token, maintenance_report(), vehicle_buttons("mnt"))
+        return
+    if cb_data.startswith("mnt_v_"):
+        vid = int(cb_data.replace("mnt_v_", ""))
+        send_paginated_report(chat_id, token, maintenance_report(vid), vehicle_buttons("mnt"))
+        return
+
+    if cb_data == "fuel_all":
+        send_paginated_report(chat_id, token, fuel_report(), vehicle_buttons("fuel"))
+        return
+    if cb_data.startswith("fuel_v_"):
+        vid = int(cb_data.replace("fuel_v_", ""))
+        send_paginated_report(chat_id, token, fuel_report(vid), vehicle_buttons("fuel"))
+        return
+
     if cb_data == "action_upload_ticket":
         ask_for_plate(chat_id, user.id, token, "ticket")
         return
-    
+
     if cb_data == "action_upload_document":
         ask_for_plate(chat_id, user.id, token, "document")
         return
-    
+
     if cb_data.startswith("sel_v_"):
         vid = int(cb_data.replace("sel_v_", ""))
         v = Vehicle.query.get(vid)
@@ -245,9 +539,18 @@ def handle_callback_query(data: dict, token: str) -> None:
                     session.pending_action = "upload_document"
                 db.session.commit()
                 if action == "ticket":
-                    send_message(token, chat_id, f"✓ Vehículo: {v.plate}\n\n📸 Ahora envía la foto del ticket de gasoil.")
+                    send_message(
+                        token,
+                        chat_id,
+                        f"✓ Vehículo: {v.plate}\n\n📸 Envía la foto del <b>ticket de gasoil</b>.",
+                    )
                 else:
-                    send_message(token, chat_id, f"✓ Vehículo: {v.plate}\n\n📸 Ahora envía la foto del documento.")
+                    send_message(
+                        token,
+                        chat_id,
+                        f"✓ Vehículo: {v.plate}\n\n📸 Envía la foto del documento "
+                        "(factura, seguro, ITV, taller…). Se detectará el tipo automáticamente.",
+                    )
             else:
                 send_message(token, chat_id, "Vehículo no encontrado.")
         return
@@ -258,6 +561,54 @@ def handle_text_message(chat_id: int, user_id: int, text: str, token: str) -> No
     session = get_or_create_session(user_id)
     text_clean = (text or "").strip().upper().replace(" ", "")
     
+    # Asociar vehículo a ticket (fallback por texto si no usa botones)
+    if session.pending_action == "waiting_plate_document":
+        if len(text_clean) >= 6 and text_clean.isalnum():
+            v = Vehicle.query.filter(Vehicle.plate == text_clean).first()
+            if not v:
+                v = Vehicle(plate=text_clean, active=True)
+                db.session.add(v)
+                db.session.flush()
+            if session.pending_document_id:
+                finalize_document_after_vehicle(
+                    chat_id, user_id, token, session.pending_document_id, v.id
+                )
+            return
+        if session.pending_document_id:
+            ask_vehicle_for_document(
+                chat_id,
+                user_id,
+                token,
+                session.pending_document_id,
+                "❌ Matrícula no válida. Elige una de la lista:",
+            )
+        return
+
+    # Campo pendiente (vencimiento, litros, fecha ticket, etc.)
+    if session.pending_action and session.pending_action.startswith("waiting_field_"):
+        field = session.pending_action.replace("waiting_field_", "", 1)
+        doc = Document.query.get(session.pending_document_id) if session.pending_document_id else None
+        if not doc:
+            clear_pending_state(user_id)
+            send_message(token, chat_id, "⚠️ No hay documento pendiente. Usa /start.")
+            handle_start(chat_id, token)
+            return
+
+        ok, err = apply_user_field_to_document(doc, field, text)
+        if not ok:
+            send_message(token, chat_id, err)
+            return
+
+        extracted: dict = {}
+        if doc.extracted_json:
+            try:
+                extracted = json.loads(doc.extracted_json)
+            except json.JSONDecodeError:
+                pass
+        send_message(token, chat_id, "✓ Dato guardado.")
+        continue_document_telegram_flow(chat_id, user_id, token, doc, extracted)
+        return
+
     # Si está esperando kilómetros
     if session.pending_action == "waiting_km":
         if text_clean.lower() == "skip" or text_clean.lower() == "omitir":
@@ -274,8 +625,10 @@ def handle_text_message(chat_id: int, user_id: int, text: str, token: str) -> No
             # Buscar el FuelEntry asociado al documento
             fuel_entry = FuelEntry.query.filter_by(document_id=session.pending_document_id).first()
             
+            doc = Document.query.get(session.pending_document_id)
+            if not fuel_entry and doc:
+                fuel_entry = ensure_fuel_entry_for_document(doc)
             if fuel_entry:
-                doc = Document.query.get(session.pending_document_id)
                 ticket_date = (doc.issue_date if doc else None) or fuel_entry.date
                 if kilometers is not None and not _is_km_value_consistent(
                     fuel_entry.vehicle_id, ticket_date, kilometers, session.pending_document_id
@@ -288,7 +641,6 @@ def handle_text_message(chat_id: int, user_id: int, text: str, token: str) -> No
                     return
 
                 fuel_entry.kilometers = kilometers
-                # También actualizar el odómetro en el documento
                 if doc:
                     doc.kilometers = kilometers
                 db.session.commit()
@@ -367,7 +719,7 @@ def handle_text_message(chat_id: int, user_id: int, text: str, token: str) -> No
     send_message(
         token,
         chat_id,
-        "No entiendo ese mensaje. Usa los botones del menú o escribe /start para comenzar.",
+        "No entiendo ese mensaje. Usa /start para el menú o envía una foto de ticket de combustible.",
     )
 
 
@@ -377,31 +729,65 @@ def process_incoming_document(
     file_id: str,
     file_path_telegram: str,
     token: str,
-    app,
+    auto_ticket: bool = False,
 ) -> None:
-    """Descarga el archivo, lo guarda, y lo procesa."""
+    """Encola foto/documento para procesarlo de uno en uno."""
+    position = enqueue_ticket(
+        TelegramTicketJob(
+            token=token,
+            chat_id=chat_id,
+            user_id=user_id,
+            file_id=file_id,
+            file_path_telegram=file_path_telegram,
+            auto_ticket=auto_ticket,
+        )
+    )
+    if position <= 1:
+        send_message(token, chat_id, "📥 Documento recibido. Procesando...")
+    else:
+        send_message(
+            token,
+            chat_id,
+            f"📥 Ticket en cola (posición {position}). Se irá procesando en orden.",
+        )
+
+
+def execute_ticket_job(job: TelegramTicketJob) -> None:
+    """Procesa un ticket de la cola (descarga, OCR, consumo)."""
+    chat_id = job.chat_id
+    user_id = job.user_id
+    file_id = job.file_id
+    file_path_telegram = job.file_path_telegram
+    token = job.token
+    auto_ticket = job.auto_ticket
     session = get_or_create_session(user_id)
-    
-    # Si no hay acción pendiente, pedir que seleccione una acción
-    if not session.pending_action or session.pending_action not in ("upload_ticket", "upload_document"):
-        send_message(
-            token,
-            chat_id,
-            "⚠️ Primero selecciona una acción con /start",
-        )
+
+    is_document_flow = session.pending_action == "upload_document" and not auto_ticket
+    is_ticket_flow = auto_ticket or session.pending_action in ("upload_ticket", "upload_document")
+
+    if not is_ticket_flow:
+        send_message(token, chat_id, "⚠️ Usa /start y elige Subir ticket o Subir doc.")
         return
-    
-    # Verificar que hay vehículo seleccionado
-    vehicle_id = session.pending_vehicle_id
-    if not vehicle_id:
-        send_message(
-            token,
-            chat_id,
-            "⚠️ Primero selecciona un vehículo.",
-        )
-        return
-    
-    send_message(token, chat_id, "⏳ Procesando documento...")
+
+    # Vehículo: solo si el usuario lo eligió en Subir ticket/doc, o lo detecta el OCR después.
+    # Nunca usar current_vehicle_id de la sesión.
+    from_menu = session.pending_action in ("upload_ticket", "upload_document")
+    if from_menu:
+        vehicle_id = session.pending_vehicle_id
+        if session.pending_action == "upload_ticket" and not vehicle_id:
+            send_message(
+                token,
+                chat_id,
+                "⚠️ Primero elige el vehículo con <b>Subir ticket</b> y luego envía la foto.",
+            )
+            return
+    else:
+        vehicle_id = None
+
+    if auto_ticket or session.pending_action == "upload_ticket":
+        send_message(token, chat_id, "⛽ Procesando ticket de combustible...")
+    else:
+        send_message(token, chat_id, "⏳ Procesando documento (detectando tipo)...")
 
     content = get_file(token, file_id)
     if not content:
@@ -422,7 +808,7 @@ def process_incoming_document(
         return
 
     # Guardar archivo
-    upload_dir = Path(app.config["UPLOAD_FOLDER"])
+    upload_dir = Path(current_app.config["UPLOAD_FOLDER"])
     upload_dir.mkdir(parents=True, exist_ok=True)
     ext = (file_path_telegram or "jpg").split(".")[-1].lower() or "jpg"
     if ext not in ("jpg", "jpeg", "png"):
@@ -441,7 +827,10 @@ def process_incoming_document(
     db.session.add(doc)
     db.session.commit()
 
-    success, msg = process_document(doc.id)
+    force_type = None
+    if auto_ticket or session.pending_action == "upload_ticket":
+        force_type = DocumentType.FUEL_TICKET.value
+    success, msg = process_document(doc.id, force_doc_type=force_type)
     doc = Document.query.get(doc.id)
 
     extracted = {}
@@ -453,32 +842,37 @@ def process_incoming_document(
 
     if success:
         summary = build_summary_for_telegram(extracted, DOC_TYPE_LABELS)
-        missing = get_missing_critical_fields(
-            extracted, doc.doc_type or "other", doc.vehicle_id
+        pending = get_pending_document_fields(
+            extracted, doc.doc_type or "other", doc.vehicle_id, doc
         )
-        if missing:
-            summary += "\n\n⚠️ " + "\n".join(missing)
-        else:
-            summary += "\n\n✅ Documento guardado correctamente."
-        
-        # Si es ticket de gasoil, preguntar km solo cuando falten o haya incoherencia.
-        should_ask_km = False
-        if session.pending_action == "upload_ticket" and doc.doc_type == "fuel_ticket":
-            should_ask_km = (
-                doc.kilometers is None or bool(extracted.get("km_needs_confirmation"))
-            )
 
-        if should_ask_km:
+        if doc and not doc.vehicle_id:
+            ask_vehicle_for_document(
+                chat_id,
+                user_id,
+                token,
+                doc.id,
+                intro_text=summary + "\n\n⚠️ No detecté matrícula. Selecciona el camión:",
+            )
+            return
+
+        if pending:
             session.pending_document_id = doc.id
             session.pending_file_id = file_id
             session.pending_file_path = file_path_telegram
+            session.pending_action = f"waiting_field_{pending[0]['field']}"
             db.session.commit()
-            send_message(token, chat_id, summary)
-            ask_for_kilometers(chat_id, user_id, token)
-        else:
-            clear_pending_state(user_id)
-            send_message(token, chat_id, summary)
-            handle_start(chat_id, token)
+            send_message(
+                token,
+                chat_id,
+                summary + f"\n\n📋 {pending[0]['prompt']}",
+            )
+            return
+
+        send_message(token, chat_id, summary)
+        continue_document_telegram_flow(
+            chat_id, user_id, token, doc, extracted
+        )
     else:
         clear_pending_state(user_id)
         send_message(
@@ -560,8 +954,33 @@ def process_update(data: dict, token: str) -> None:
             return
 
     if file_id:
+        session = get_or_create_session(user.id)
+        pending = session.pending_action or ""
+
+        if pending == "upload_document":
+            # Subir doc: OCR detecta tipo (seguro, ITV, factura, etc.)
+            auto_ticket = False
+        elif pending == "upload_ticket":
+            auto_ticket = True
+        elif photo:
+            # Foto sin menú previo = ticket de combustible automático
+            auto_ticket = True
+        else:
+            send_message(
+                token,
+                chat_id,
+                "📋 Elige primero <b>Subir ticket</b> o <b>Subir doc</b> en el menú (/start).",
+            )
+            handle_start(chat_id, token)
+            return
+
         process_incoming_document(
-            chat_id, user.id, file_id, file_path_tg or "", token, current_app
+            chat_id,
+            user.id,
+            file_id,
+            file_path_tg or "",
+            token,
+            auto_ticket=auto_ticket,
         )
         return
 

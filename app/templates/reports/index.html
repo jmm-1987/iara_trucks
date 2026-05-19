@@ -210,7 +210,7 @@
                             {% for r in fuel_data %}
                             <tr>
                                 <td>{{ r.vehicle_plate }}</td>
-                                <td>{{ r.month }}</td>
+                                <td>{{ r.month|month_format }}</td>
                                 <td>{{ "%.1f"|format(r.total_liters or 0) }}</td>
                                 <td>{% if r.total_km is not none %}{{ r.total_km }}{% else %}-{% endif %}</td>
                                 <td>{% if r.liters_per_100km is not none %}{{ "%.2f"|format(r.liters_per_100km) }}{% else %}-{% endif %}</td>
@@ -302,7 +302,7 @@
                     {% for fe in fuel_tickets %}
                     {% set km = fe.kilometers or (fe.document and fe.document.kilometers) %}
                     <tr>
-                        <td>{{ fe.date }}</td>
+                        <td>{{ fe.date|date_format }}</td>
                         <td>{{ fe.vehicle.plate if fe.vehicle else '-' }}</td>
                         <td>{{ "%.2f"|format(fe.liters or 0) }}</td>
                         <td>

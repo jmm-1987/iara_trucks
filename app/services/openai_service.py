@@ -37,8 +37,12 @@ Devuelve ÚNICAMENTE un objeto JSON válido, sin texto adicional, con esta estru
   "vehicle_identifier_guess": "matrícula si aparece o null",
   "vendor_name": "nombre proveedor o null",
   "vendor_tax_id": "CIF/NIF o null",
-  "date_issue": "YYYY-MM-DD - FECHA DEL TICKET/FACTURA (la que aparece impresa en el documento, ej. 27-01-2026). OBLIGATORIO para fuel_ticket.",
-  "date_due": "YYYY-MM-DD para vencimientos (seguro/ITV/tacógrafo) o null",
+  "date_issue": "YYYY-MM-DD - fecha emisión del documento o INICIO de vigencia (desde). OBLIGATORIO para fuel_ticket.",
+  "date_due": "YYYY-MM-DD - FIN de vigencia / vencimiento (hasta). Para seguros: SIEMPRE el fin del periodo de la póliza, NUNCA fecha de valor.",
+  "policy_period": {
+    "valid_from": "YYYY-MM-DD inicio cobertura (desde, efecto, inicio vigencia) o null",
+    "valid_to": "YYYY-MM-DD fin cobertura (hasta, fin vigencia, vencimiento póliza) o null"
+  },
   "amounts": {
     "subtotal": número o null,
     "tax": número o null,
@@ -60,11 +64,19 @@ Reglas de detección de tipo:
 - fuel_ticket: Si tiene estación de servicio, litros, precio por litro, tipo de combustible. IMPORTANTE: extrae SIEMPRE la fecha del ticket (suele estar junto a la hora, ej. 27-01-2026 21:05) y los kilómetros del cuentakilómetros si aparecen (normalmente escritos a mano arriba del ticket).
 - invoice: Si tiene número de factura, IVA desglosado, datos fiscales completos (CIF, razón social)
 - delivery_note: Si dice "albarán", "entrega", "delivery note", o es documento de entrega sin factura completa
-- insurance_policy: Si menciona seguro, póliza, aseguradora, fechas de vigencia
+- insurance_policy: Póliza/recibo de seguro. SIEMPRE hay periodo DESDE-HASTA (vigencia). valid_to/hasta = vencimiento.
 - itv: Si menciona ITV, inspección técnica, ITV
 - tachograph: Si menciona tacógrafo, tiempos de conducción
 - workshop_invoice: Si es factura de taller, reparación, mantenimiento vehículo
 - tires_invoice: Si es factura específica de neumáticos
+
+Reglas CRÍTICAS para insurance_policy (seguros):
+- Toda póliza/recibo tiene vigencia con fecha INICIO (desde/efecto/inicio) y fecha FIN (hasta/fin de vigencia/vencimiento).
+- policy_period.valid_to y date_due deben ser la fecha FIN de cobertura (la del "HASTA", "hasta el", "vigente hasta", "vencimiento").
+- policy_period.valid_from y date_issue (si no hay otra emisión) = fecha INICIO (desde, "a partir del", "efecto").
+- NUNCA uses como date_due ni valid_to: "fecha de valor", "fecha valor", "value date", "fecha efecto" si es solo el inicio.
+- Si aparecen varias fechas, la MÁS TARDÍA del tramo de vigencia es el vencimiento (valid_to / date_due).
+- La "fecha de valor" es intermedia y debe ignorarse para vencimiento.
 
 Reglas generales:
 - Usa null para campos no encontrados
@@ -158,6 +170,7 @@ def _normalize_response(data: dict) -> dict:
         "vendor_tax_id": data.get("vendor_tax_id"),
         "date_issue": data.get("date_issue"),
         "date_due": data.get("date_due"),
+        "policy_period": data.get("policy_period") or {},
         "amounts": data.get("amounts") or {},
         "fuel": data.get("fuel") or {},
         "maintenance_concept": data.get("maintenance_concept"),

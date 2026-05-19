@@ -4,6 +4,7 @@ from decimal import Decimal
 import pytest
 
 from app.services.extraction_service import (
+    get_pending_document_fields,
     normalize_amount,
     normalize_date,
     normalize_plate,
@@ -79,3 +80,46 @@ class TestValidateAndEnrich:
         extracted = {"vehicle_identifier_guess": None}
         result = validate_and_enrich(extracted, "1234ABC")
         assert result["vehicle_identifier_guess"] == "1234ABC"
+
+    def test_insurance_uses_policy_period_hasta(self):
+        extracted = {
+            "doc_type": "insurance_policy",
+            "date_issue": "2025-06-15",
+            "date_due": "2025-06-15",
+            "policy_period": {
+                "valid_from": "2025-01-01",
+                "valid_to": "2025-12-31",
+            },
+        }
+        result = validate_and_enrich(extracted)
+        assert result["date_issue"] == "2025-01-01"
+        assert result["date_due"] == "2025-12-31"
+
+    def test_insurance_swaps_inverted_dates(self):
+        extracted = {
+            "doc_type": "insurance_policy",
+            "date_issue": "2026-12-31",
+            "date_due": "2026-01-01",
+        }
+        result = validate_and_enrich(extracted)
+        assert result["date_issue"] == "2026-01-01"
+        assert result["date_due"] == "2026-12-31"
+
+
+class TestPendingDocumentFields:
+    def test_itv_pending_date_due(self):
+        pending = get_pending_document_fields(
+            {"doc_type": "itv", "date_issue": "2026-12-12"},
+            "itv",
+            vehicle_id=1,
+        )
+        assert len(pending) == 1
+        assert pending[0]["field"] == "date_due"
+
+    def test_no_pending_when_due_present(self):
+        pending = get_pending_document_fields(
+            {"doc_type": "itv", "date_due": "2027-12-12"},
+            "itv",
+            vehicle_id=1,
+        )
+        assert pending == []

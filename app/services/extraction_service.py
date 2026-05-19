@@ -98,6 +98,38 @@ def normalize_plate(plate: Any) -> str | None:
     return None
 
 
+def apply_insurance_date_rules(result: dict) -> dict:
+    """
+    Corrige fechas en pólizas: vencimiento = fin de vigencia (hasta), no fecha de valor.
+    """
+    doc_type = (result.get("doc_type") or "").lower()
+    if doc_type not in ("insurance_policy", "insurance"):
+        return result
+
+    period = result.get("policy_period") or {}
+    if isinstance(period, dict):
+        valid_from = normalize_date(period.get("valid_from"))
+        valid_to = normalize_date(period.get("valid_to"))
+        if valid_from:
+            result["date_issue"] = valid_from
+        if valid_to:
+            result["date_due"] = valid_to
+
+    d_issue = normalize_date(result.get("date_issue"))
+    d_due = normalize_date(result.get("date_due"))
+    if d_issue and d_due:
+        from datetime import date as date_cls
+
+        di = date_cls.fromisoformat(d_issue)
+        dd = date_cls.fromisoformat(d_due)
+        if dd < di:
+            result["date_issue"], result["date_due"] = d_due, d_issue
+    elif d_due and not d_issue:
+        result["date_issue"] = None
+
+    return result
+
+
 def validate_and_enrich(extracted: dict, vehicle_plate: str | None = None) -> dict:
     """
     Valida, normaliza y enriquece los datos extraídos.
@@ -148,11 +180,75 @@ def validate_and_enrich(extracted: dict, vehicle_plate: str | None = None) -> di
             result["vehicle_identifier_guess"]
         )
 
+    result = apply_insurance_date_rules(result)
+
     return result
 
 
+def get_pending_document_fields(
+    extracted: dict,
+    doc_type: str | None,
+    vehicle_id: int | None,
+    doc=None,
+) -> list[dict[str, str]]:
+    """
+    Campos pendientes que el usuario debe completar (en orden).
+    Cada item: {"field": "date_due"|..., "prompt": "..."}
+    """
+    pending: list[dict[str, str]] = []
+    doc_type_val = (doc_type or extracted.get("doc_type") or "other").lower()
+
+    if not vehicle_id:
+        pending.append(
+            {
+                "field": "vehicle",
+                "prompt": "Selecciona el vehículo o escribe la matrícula:",
+            }
+        )
+        return pending
+
+    if doc_type_val == "fuel_ticket":
+        fuel = extracted.get("fuel") or {}
+        if not fuel.get("liters"):
+            pending.append(
+                {
+                    "field": "fuel_liters",
+                    "prompt": "¿Cuántos litros repostaste? (solo el número, ej: 85.5)",
+                }
+            )
+        has_issue = extracted.get("date_issue") or (doc and getattr(doc, "issue_date", None))
+        if not has_issue:
+            pending.append(
+                {
+                    "field": "date_issue",
+                    "prompt": "¿Qué fecha tiene el ticket? (dd/mm/aaaa)",
+                }
+            )
+
+    if doc_type_val in ("insurance_policy", "itv", "tachograph"):
+        has_due = extracted.get("date_due") or (doc and getattr(doc, "due_date", None))
+        if not has_due:
+            labels = {
+                "insurance_policy": "seguro",
+                "itv": "ITV",
+                "tachograph": "tacógrafo",
+            }
+            label = labels.get(doc_type_val, doc_type_val)
+            pending.append(
+                {
+                    "field": "date_due",
+                    "prompt": (
+                        f"¿Cuál es la fecha de vencimiento del {label}? "
+                        "(dd/mm/aaaa — la del «hasta» / fin de vigencia)"
+                    ),
+                }
+            )
+
+    return pending
+
+
 def get_missing_critical_fields(
-    extracted: dict, doc_type: str, vehicle_id: int | None
+    extracted: dict, doc_type: str, vehicle_id: int | None, doc=None
 ) -> list[str]:
     """
     Determina qué campos críticos faltan para poder guardar el documento.
@@ -160,26 +256,4 @@ def get_missing_critical_fields(
     Returns:
         Lista de mensajes descriptivos para preguntar al usuario
     """
-    missing = []
-
-    if not vehicle_id:
-        missing.append("No hay vehículo seleccionado. Por favor, selecciona uno con /vehiculo")
-
-    doc_type_val = (extracted.get("doc_type") or "other").lower()
-
-    # Para fuel_ticket: litros y fecha suelen ser críticos
-    if doc_type_val == "fuel_ticket":
-        fuel = extracted.get("fuel") or {}
-        if not fuel.get("liters"):
-            missing.append("No se detectó la cantidad de litros. ¿Cuántos litros repostaste?")
-        if not extracted.get("date_issue"):
-            missing.append("No se detectó la fecha. ¿Qué fecha tiene el ticket?")
-
-    # Para seguros/ITV/tacógrafo: fecha de vencimiento
-    if doc_type_val in ("insurance_policy", "itv", "tachograph"):
-        if not extracted.get("date_due"):
-            missing.append(
-                f"No se detectó fecha de vencimiento para {doc_type_val}. ¿Cuándo vence?"
-            )
-
-    return missing
+    return [p["prompt"] for p in get_pending_document_fields(extracted, doc_type, vehicle_id, doc)]

@@ -36,7 +36,7 @@ from app.models import (
     Vehicle,
     db,
 )
-from app.services.document_processor import process_document
+from app.services.document_processor import process_document, ensure_fuel_entry_for_document, sync_missing_fuel_entries
 from app.services.dedup_service import (
     find_duplicate_by_hash,
     find_duplicate_manual_entry,
@@ -469,9 +469,21 @@ def maintenance_list():
 @web_bp.route("/documentos/<int:did>")
 def document_detail(did):
     doc = Document.query.get_or_404(did)
+    fuel_entry = FuelEntry.query.filter_by(document_id=doc.id).first()
+    if (
+        doc.status == DocumentStatus.PROCESSED.value
+        and doc.doc_type == DocumentType.FUEL_TICKET.value
+        and doc.vehicle_id
+        and not fuel_entry
+    ):
+        fuel_entry = ensure_fuel_entry_for_document(doc)
+        if fuel_entry:
+            db.session.commit()
+            flash("Consumo creado en el listado de combustible.", "success")
     return render_template(
         "documents/detail.html",
         doc=doc,
+        fuel_entry=fuel_entry,
         doc_type_labels=DOC_TYPE_LABELS,
     )
 
@@ -1154,6 +1166,11 @@ def reports():
     except ValueError:
         df = date.today() - timedelta(days=365)
         dt = date.today()
+
+    # Reparar tickets procesados sin FuelEntry (p. ej. subidos por Telegram antes del fix).
+    repaired = sync_missing_fuel_entries()
+    if repaired:
+        flash(f"Se han sincronizado {repaired} ticket(s) con el listado de consumos.", "info")
 
     if focus == "consumos":
         fuel_data = fuel_consumption_summary_by_vehicle(vehicle_id, df, dt)

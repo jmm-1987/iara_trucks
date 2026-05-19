@@ -18,7 +18,11 @@ from app.models import (
     MaintenanceEntry,
     db,
 )
-from app.services.extraction_service import normalize_date, validate_and_enrich
+from app.services.extraction_service import (
+    normalize_amount,
+    normalize_date,
+    validate_and_enrich,
+)
 from app.services.openai_service import analyze_document_image
 
 logger = logging.getLogger(__name__)
@@ -121,7 +125,7 @@ def _validate_km_consistency(
     return True, None
 
 
-def process_document(document_id: int) -> tuple[bool, str]:
+def process_document(document_id: int, force_doc_type: str | None = None) -> tuple[bool, str]:
     """
     Procesa un documento pendiente: llama a OpenAI, extrae datos, persiste.
 
@@ -194,7 +198,9 @@ def process_document(document_id: int) -> tuple[bool, str]:
         return False, str(e)
 
     extracted = validate_and_enrich(extracted, vehicle_plate)
-    
+    if force_doc_type:
+        extracted["doc_type"] = force_doc_type
+
     # Intentar asociar vehículo automáticamente si OpenAI extrajo una matrícula
     # SIEMPRE usar la matrícula extraída por OpenAI si está disponible, ya que es más confiable
     if extracted.get("vehicle_identifier_guess"):
@@ -477,7 +483,216 @@ def process_document(document_id: int) -> tuple[bool, str]:
     update_reminders_from_extraction(doc, extracted)
 
     db.session.commit()
+
+    # Seguridad: si es ticket y aún no hay FuelEntry, intentar crearlo ahora.
+    if doc.doc_type == DocumentType.FUEL_TICKET.value:
+        if ensure_fuel_entry_for_document(doc):
+            db.session.commit()
+
     return True, "Documento procesado correctamente"
+
+
+def apply_user_field_to_document(doc: Document, field: str, value: str) -> tuple[bool, str]:
+    """
+    Aplica un dato introducido por el usuario (Telegram) al documento y extracted_json.
+    """
+    extracted: dict = {}
+    if doc.extracted_json:
+        try:
+            extracted = json.loads(doc.extracted_json)
+        except (json.JSONDecodeError, TypeError):
+            extracted = {}
+
+    raw = (value or "").strip()
+    if not raw:
+        return False, "❌ Escribe un valor o /start para cancelar."
+
+    if field == "date_due":
+        normalized = normalize_date(raw)
+        if not normalized:
+            return False, "❌ Fecha no válida. Usa dd/mm/aaaa (ej: 31/12/2026)."
+        extracted["date_due"] = normalized
+        doc.due_date = datetime.strptime(normalized, "%Y-%m-%d").date()
+    elif field == "date_issue":
+        normalized = normalize_date(raw)
+        if not normalized:
+            return False, "❌ Fecha no válida. Usa dd/mm/aaaa (ej: 15/03/2026)."
+        extracted["date_issue"] = normalized
+        doc.issue_date = datetime.strptime(normalized, "%Y-%m-%d").date()
+    elif field == "fuel_liters":
+        liters = normalize_amount(raw)
+        if liters is None or liters <= 0:
+            return False, "❌ Litros no válidos. Escribe solo el número (ej: 85.5)."
+        fuel = extracted.setdefault("fuel", {})
+        fuel["liters"] = float(liters)
+        extracted["fuel"] = fuel
+    else:
+        return False, "❌ Campo no reconocido."
+
+    doc.extracted_json = json.dumps(extracted, indent=2, default=str)
+    update_reminders_from_extraction(doc, extracted)
+    if doc.doc_type == DocumentType.FUEL_TICKET.value and doc.vehicle_id:
+        ensure_fuel_entry_for_document(doc)
+    db.session.commit()
+    return True, ""
+
+
+def ensure_document_records_after_vehicle_assigned(doc: Document) -> None:
+    """
+    Tras asignar vehículo manualmente (Telegram), crea FuelEntry/Expense/Reminder
+    que no se generaron en el procesado inicial sin vehicle_id.
+    """
+    if not doc or not doc.vehicle_id:
+        return
+
+    extracted: dict = {}
+    if doc.extracted_json:
+        try:
+            extracted = json.loads(doc.extracted_json)
+        except (json.JSONDecodeError, TypeError):
+            extracted = {}
+
+    if doc.doc_type == DocumentType.FUEL_TICKET.value:
+        ensure_fuel_entry_for_document(doc)
+    else:
+        category = DOC_TYPE_TO_EXPENSE_CATEGORY.get(doc.doc_type or "")
+        if category and doc.total_amount and not ExpenseEntry.query.filter_by(document_id=doc.id).first():
+            expense = ExpenseEntry(
+                document_id=doc.id,
+                vehicle_id=doc.vehicle_id,
+                date=doc.issue_date or datetime.utcnow().date(),
+                category=category,
+                subtotal_amount=doc.subtotal_amount,
+                tax_amount=doc.tax_amount,
+                total_amount=doc.total_amount,
+                vendor=doc.vendor,
+            )
+            db.session.add(expense)
+            if _is_maintenance_document_type(doc.doc_type):
+                if not MaintenanceEntry.query.filter_by(document_id=doc.id).first():
+                    maintenance = MaintenanceEntry(
+                        document_id=doc.id,
+                        vehicle_id=doc.vehicle_id,
+                        date=doc.issue_date or datetime.utcnow().date(),
+                        concept=_maintenance_concept_for_doc(doc, extracted),
+                        vendor=doc.vendor,
+                        subtotal_amount=doc.subtotal_amount,
+                        tax_amount=doc.tax_amount,
+                        total_amount=doc.total_amount,
+                    )
+                    db.session.add(maintenance)
+        if extracted:
+            update_reminders_from_extraction(doc, extracted)
+
+
+def sync_missing_fuel_entries(limit: int = 100) -> int:
+    """
+    Repara tickets procesados sin registro en consumos (FuelEntry).
+    Devuelve cuántos se han creado.
+    """
+    linked_ids = db.session.query(FuelEntry.document_id).filter(FuelEntry.document_id.isnot(None))
+    docs = (
+        Document.query.filter(
+            Document.doc_type == DocumentType.FUEL_TICKET.value,
+            Document.status == DocumentStatus.PROCESSED.value,
+            Document.vehicle_id.isnot(None),
+            ~Document.id.in_(linked_ids),
+        )
+        .order_by(Document.id.desc())
+        .limit(limit)
+        .all()
+    )
+    created = 0
+    for doc in docs:
+        if ensure_fuel_entry_for_document(doc):
+            created += 1
+    if created:
+        db.session.commit()
+    return created
+
+
+def ensure_fuel_entry_for_document(doc: Document) -> FuelEntry | None:
+    """
+    Crea (o devuelve) el FuelEntry de un ticket ya procesado.
+    Útil cuando el vehículo se asigna después del OCR (Telegram).
+    """
+    if not doc or doc.doc_type != DocumentType.FUEL_TICKET.value or not doc.vehicle_id:
+        return None
+
+    existing = FuelEntry.query.filter_by(document_id=doc.id).first()
+    if existing:
+        if existing.vehicle_id != doc.vehicle_id:
+            existing.vehicle_id = doc.vehicle_id
+        return existing
+
+    extracted: dict = {}
+    if doc.extracted_json:
+        try:
+            extracted = json.loads(doc.extracted_json)
+        except (json.JSONDecodeError, TypeError):
+            extracted = {}
+
+    fuel = extracted.get("fuel") or {}
+    amounts = extracted.get("amounts") or {}
+
+    liters = fuel.get("liters")
+    price = fuel.get("price_per_liter")
+    total = fuel.get("total_amount") or amounts.get("total") or doc.total_amount
+
+    if liters is not None:
+        liters_decimal = liters if isinstance(liters, Decimal) else Decimal(str(liters))
+    else:
+        liters_decimal = None
+
+    if liters_decimal is None or liters_decimal <= 0:
+        return None
+
+    if total is not None:
+        total_decimal = total if isinstance(total, Decimal) else Decimal(str(total))
+    else:
+        total_decimal = Decimal("0")
+
+    price_decimal = Decimal(str(price)) if price else Decimal("0")
+    if price_decimal <= 0 and total_decimal > 0 and liters_decimal > 0:
+        price_decimal = total_decimal / liters_decimal
+
+    subtotal = doc.subtotal_amount
+    tax = doc.tax_amount
+    if subtotal is None and total_decimal:
+        subtotal = total_decimal / Decimal("1.21")
+        tax = total_decimal - subtotal
+    elif tax is None and subtotal and total_decimal:
+        tax = total_decimal - subtotal
+
+    kilometers = doc.kilometers
+    if kilometers is None:
+        for key in ("kilometers", "odometer_km"):
+            raw = fuel.get(key) if key in fuel else extracted.get(key)
+            if raw is not None:
+                try:
+                    kilometers = int(raw)
+                    break
+                except (ValueError, TypeError):
+                    pass
+
+    fuel_entry = FuelEntry(
+        document_id=doc.id,
+        vehicle_id=doc.vehicle_id,
+        date=doc.issue_date or datetime.utcnow().date(),
+        liters=liters_decimal,
+        price_per_liter=price_decimal,
+        subtotal_amount=subtotal,
+        tax_amount=tax,
+        total_amount=total_decimal if total_decimal > 0 else (subtotal or Decimal("0")) + (tax or Decimal("0")),
+        station=doc.vendor,
+        fuel_type=fuel.get("fuel_type"),
+        kilometers=kilometers,
+    )
+    db.session.add(fuel_entry)
+    db.session.flush()
+    _sync_document_fuelentry_kilometers(doc)
+    logger.info("FuelEntry creado (ensure) para documento %s", doc.id)
+    return fuel_entry
 
 
 def build_summary_for_telegram(extracted: dict, doc_type_labels: dict) -> str:

@@ -32,30 +32,55 @@ def create_app(config_class=None):
     # Base de datos
     db.init_app(app)
 
-    # Filtro para formatear fechas a dd/mm/aaaa
-    @app.template_filter('date_format')
-    def date_format_filter(value):
-        """Formatea cualquier fecha a dd/mm/aaaa."""
+    # Filtros de fecha: visualización siempre dd/mm/aaaa
+    from datetime import date as date_cls, datetime as datetime_cls
+
+    def _to_dd_mm_yyyy(value) -> str:
         if not value:
-            return '-'
+            return "-"
+        if isinstance(value, datetime_cls):
+            return value.strftime("%d/%m/%Y")
+        if isinstance(value, date_cls):
+            return value.strftime("%d/%m/%Y")
         if isinstance(value, str):
-            # Si es string, intentar parsear
-            try:
-                from datetime import datetime
-                if len(value) == 10 and '-' in value:  # Formato YYYY-MM-DD
-                    dt = datetime.strptime(value, '%Y-%m-%d')
-                    return dt.strftime('%d/%m/%Y')
-                # Si viene con fecha+h
-                if len(value) >= 10 and '-' in value[:10]:
-                    dt = datetime.strptime(value[:10], '%Y-%m-%d')
-                    return dt.strftime('%d/%m/%Y')
-                return value
-            except:
-                return value
+            s = value.strip()
+            if not s:
+                return "-"
+            for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%d/%m/%Y", "%d-%m-%Y"):
+                try:
+                    if "T" in s:
+                        return datetime_cls.fromisoformat(s.replace("Z", "")).strftime("%d/%m/%Y")
+                    if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+                        return datetime_cls.strptime(s[:10], "%Y-%m-%d").strftime("%d/%m/%Y")
+                    return datetime_cls.strptime(s[:10], fmt).strftime("%d/%m/%Y")
+                except ValueError:
+                    continue
+            return s
         try:
-            return value.strftime('%d/%m/%Y')
-        except:
+            return value.strftime("%d/%m/%Y")
+        except Exception:
             return str(value)
+
+    @app.template_filter("date_format")
+    def date_format_filter(value):
+        return _to_dd_mm_yyyy(value)
+
+    @app.template_filter("month_format")
+    def month_format_filter(value):
+        """YYYY-MM -> nombre mes + año (ej. Abr 2026)."""
+        if not value:
+            return "-"
+        s = str(value).strip()
+        if len(s) == 7 and s[4] == "-":
+            try:
+                y, m = s.split("-")
+                names = ("", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic")
+                mi = int(m)
+                if 1 <= mi <= 12:
+                    return f"{names[mi]} {y}"
+            except ValueError:
+                pass
+        return _to_dd_mm_yyyy(value)
 
     # Crear directorio uploads
     with app.app_context():

@@ -597,12 +597,23 @@ def export_csv_report(
                     "total_amount",
                 ]
             )
+            month_names = ("", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic")
+
+            def _csv_month_label(month_val: str | None) -> str:
+                if not month_val or len(str(month_val)) != 7:
+                    return month_val or ""
+                y, m = str(month_val).split("-")
+                try:
+                    return f"{month_names[int(m)]} {y}"
+                except (ValueError, IndexError):
+                    return str(month_val)
+
             for row in data:
                 writer.writerow(
                     [
                         row["vehicle_id"],
                         row["vehicle_plate"],
-                        row["month"],
+                        _csv_month_label(row.get("month")),
                         row["total_liters"],
                         row["subtotal_amount"],
                         row["tax_amount"],
