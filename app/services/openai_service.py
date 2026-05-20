@@ -34,7 +34,7 @@ Devuelve ÚNICAMENTE un objeto JSON válido, sin texto adicional, con esta estru
 
 {
   "doc_type": "fuel_ticket" | "invoice" | "delivery_note" | "insurance_policy" | "itv" | "tachograph" | "workshop_invoice" | "tires_invoice" | "other",
-  "vehicle_identifier_guess": "matrícula si aparece o null",
+  "vehicle_identifier_guess": "matrícula si aparece (sin guiones ni espacios, ej: 3130LDW) o null",
   "vendor_name": "nombre proveedor o null",
   "vendor_tax_id": "CIF/NIF o null",
   "date_issue": "YYYY-MM-DD - fecha emisión del documento o INICIO de vigencia (desde). OBLIGATORIO para fuel_ticket.",

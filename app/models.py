@@ -112,6 +112,8 @@ class Document(db.Model):
     status = db.Column(
         db.String(20), default=DocumentStatus.PENDING.value
     )  # pending/processed/error
+    needs_correction = db.Column(db.Boolean, default=False, nullable=False, index=True)
+    correction_summary = db.Column(db.String(500), nullable=True)
     raw_text = db.Column(Text, nullable=True)
     extracted_json = db.Column(Text, nullable=True)
     error_message = db.Column(Text, nullable=True)

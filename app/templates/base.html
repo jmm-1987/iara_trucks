@@ -43,6 +43,25 @@
             opacity: 1;
             background: rgba(255,255,255,.15);
         }
+        .nav-correction-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 1.35rem;
+            height: 1.35rem;
+            padding: 0 .35rem;
+            margin-left: .35rem;
+            border-radius: 999px;
+            background: #e85d04;
+            color: #fff;
+            font-size: .72rem;
+            font-weight: 800;
+            line-height: 1;
+        }
+        .top-nav .nav-link.nav-correction-link {
+            display: inline-flex;
+            align-items: center;
+        }
         .quick-strip {
             background: #fff;
             border-bottom: 1px solid var(--app-stroke);
@@ -170,8 +189,11 @@
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link {% if 'document' in (request.endpoint or '') %}active{% endif %}" href="{{ url_for('web.document_list') }}">
+                    <a class="nav-link nav-correction-link {% if 'document' in (request.endpoint or '') %}active{% endif %}" href="{{ url_for('web.document_list', corregir=1) if docs_to_correct_count else url_for('web.document_list') }}">
                         <i class="bi bi-file-earmark-image me-1"></i>Documentos
+                        {% if docs_to_correct_count %}
+                        <span class="nav-correction-badge" title="Documentos pendientes de corregir">{{ docs_to_correct_count }}</span>
+                        {% endif %}
                     </a>
                 </li>
                 <li class="nav-item">

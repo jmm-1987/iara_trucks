@@ -89,13 +89,63 @@ def normalize_date(value: Any) -> str | None:
 
 
 def normalize_plate(plate: Any) -> str | None:
-    """Normaliza matrícula española: quita espacios, mayúsculas."""
+    """
+    Normaliza matrícula española: mayúsculas, sin espacios ni guiones ni puntos.
+    Formato canónico para comparar y guardar (ej. 3130-LDW -> 3130LDW).
+    """
     if not plate:
         return None
-    s = str(plate).strip().upper().replace(" ", "")
-    if len(s) >= 6:
+    s = str(plate).strip().upper()
+    for ch in (" ", "-", "_", ".", "/"):
+        s = s.replace(ch, "")
+    if len(s) >= 6 and s.isalnum():
         return s
     return None
+
+
+def find_vehicle_by_plate(plate: Any):
+    """
+    Busca un vehículo existente comparando matrículas normalizadas.
+    Nunca crea registros nuevos.
+    """
+    from app.models import Vehicle
+
+    key = normalize_plate(plate)
+    if not key:
+        return None
+
+    exact = Vehicle.query.filter_by(plate=key).first()
+    if exact:
+        return exact
+
+    for vehicle in Vehicle.query.all():
+        if normalize_plate(vehicle.plate) == key:
+            return vehicle
+    return None
+
+
+def get_or_create_vehicle_by_plate(plate: Any, *, create: bool = True):
+    """
+    Resuelve matrícula contra la flota existente; solo crea si no hay coincidencia.
+    La matrícula guardada nunca lleva guiones.
+    """
+    from app.models import Vehicle, db
+
+    key = normalize_plate(plate)
+    if not key:
+        return None
+
+    existing = find_vehicle_by_plate(key)
+    if existing:
+        return existing
+
+    if not create:
+        return None
+
+    vehicle = Vehicle(plate=key, active=True)
+    db.session.add(vehicle)
+    db.session.flush()
+    return vehicle
 
 
 def apply_insurance_date_rules(result: dict) -> dict:

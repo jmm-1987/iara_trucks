@@ -44,6 +44,7 @@ def _sync_document_fuelentry_kilometers(doc: Document) -> None:
         elif fuel_entry.kilometers is not None and doc.kilometers is None:
             doc.kilometers = fuel_entry.kilometers
             logger.debug("Sincronizado fuel_entry.kilometers (%s) -> doc.kilometers", fuel_entry.kilometers)
+from app.services.document_review_service import refresh_document_correction_status
 from app.services.reminders_service import update_reminders_from_extraction
 
 logger = logging.getLogger(__name__)
@@ -204,30 +205,34 @@ def process_document(document_id: int, force_doc_type: str | None = None) -> tup
     # Intentar asociar vehículo automáticamente si OpenAI extrajo una matrícula
     # SIEMPRE usar la matrícula extraída por OpenAI si está disponible, ya que es más confiable
     if extracted.get("vehicle_identifier_guess"):
-        from app.services.extraction_service import normalize_plate
-        from app.models import Vehicle
-        
+        from app.services.extraction_service import (
+            get_or_create_vehicle_by_plate,
+            normalize_plate,
+        )
+
         extracted_plate = normalize_plate(extracted.get("vehicle_identifier_guess"))
         if extracted_plate:
-            # Buscar o crear el vehículo con la matrícula extraída
-            vehicle = Vehicle.query.filter_by(plate=extracted_plate).first()
-            if not vehicle:
-                # Crear vehículo automáticamente si no existe
-                vehicle = Vehicle(plate=extracted_plate, active=True)
-                db.session.add(vehicle)
-                db.session.flush()  # Para obtener el ID
-                logger.info("Vehículo creado automáticamente: %s", extracted_plate)
-            
-            # Si el documento ya tenía un vehículo asociado diferente, actualizarlo
-            if doc.vehicle_id and doc.vehicle_id != vehicle.id:
-                current_vehicle = Vehicle.query.get(doc.vehicle_id)
-                if current_vehicle:
-                    logger.warning("Documento %s tenía vehículo %s pero el documento muestra %s. Actualizando al vehículo correcto.", 
-                                 document_id, current_vehicle.plate, extracted_plate)
-            
-            # Asociar el documento con el vehículo correcto (siempre usar la matrícula extraída)
-            doc.vehicle_id = vehicle.id
-            logger.info("Documento %s asociado automáticamente al vehículo %s (matrícula extraída del documento)", document_id, extracted_plate)
+            vehicle = get_or_create_vehicle_by_plate(extracted_plate, create=True)
+            if vehicle:
+                if doc.vehicle_id and doc.vehicle_id != vehicle.id:
+                    from app.models import Vehicle
+
+                    current_vehicle = Vehicle.query.get(doc.vehicle_id)
+                    if current_vehicle:
+                        logger.warning(
+                            "Documento %s tenía vehículo %s pero el documento muestra %s. "
+                            "Actualizando al vehículo correcto.",
+                            document_id,
+                            current_vehicle.plate,
+                            vehicle.plate,
+                        )
+                doc.vehicle_id = vehicle.id
+                extracted["vehicle_identifier_guess"] = vehicle.plate
+                logger.info(
+                    "Documento %s asociado al vehículo %s (matrícula normalizada)",
+                    document_id,
+                    vehicle.plate,
+                )
 
     # Persistir en Document
     amounts = extracted.get("amounts") or {}
@@ -489,6 +494,9 @@ def process_document(document_id: int, force_doc_type: str | None = None) -> tup
         if ensure_fuel_entry_for_document(doc):
             db.session.commit()
 
+    refresh_document_correction_status(doc, extracted)
+    db.session.commit()
+
     return True, "Documento procesado correctamente"
 
 
@@ -533,6 +541,7 @@ def apply_user_field_to_document(doc: Document, field: str, value: str) -> tuple
     update_reminders_from_extraction(doc, extracted)
     if doc.doc_type == DocumentType.FUEL_TICKET.value and doc.vehicle_id:
         ensure_fuel_entry_for_document(doc)
+    refresh_document_correction_status(doc, extracted)
     db.session.commit()
     return True, ""
 

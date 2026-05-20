@@ -56,6 +56,10 @@ class TestNormalizePlate:
     def test_spaces_removed(self):
         assert normalize_plate(" 1234 ABC ") == "1234ABC"
 
+    def test_hyphens_removed(self):
+        assert normalize_plate("3130-LDW") == "3130LDW"
+        assert normalize_plate("1234-ABC") == "1234ABC"
+
     def test_too_short(self):
         assert normalize_plate("123") is None
 

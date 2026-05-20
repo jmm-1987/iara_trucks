@@ -82,9 +82,18 @@ def create_app(config_class=None):
                 pass
         return _to_dd_mm_yyyy(value)
 
-    # Crear directorio uploads
+    # Crear directorio uploads y columnas de revisión de documentos
     with app.app_context():
         ensure_uploads_dir()
+        from app.services.document_review_service import ensure_document_review_columns
+
+        ensure_document_review_columns()
+
+    @app.context_processor
+    def inject_nav_counts():
+        from app.services.document_review_service import count_documents_needing_correction
+
+        return {"docs_to_correct_count": count_documents_needing_correction()}
 
     # Blueprints
     from app.routes.web import web_bp

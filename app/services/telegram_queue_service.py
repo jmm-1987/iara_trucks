@@ -22,6 +22,8 @@ class TelegramTicketJob:
     file_id: str
     file_path_telegram: str
     auto_ticket: bool
+    batch_ticket: bool = False
+    vehicle_id: int | None = None
 
 
 _queue: queue.Queue = queue.Queue()

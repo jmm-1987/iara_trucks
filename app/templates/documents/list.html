@@ -29,21 +29,32 @@
   .list-panel .status.ok { background: rgba(64,211,156,.18); border: 1px solid rgba(64,211,156,.35); }
   .list-panel .status.pending { background: rgba(255,178,87,.18); border: 1px solid rgba(255,178,87,.35); }
   .list-panel .status.error { background: rgba(255,92,112,.2); border: 1px solid rgba(255,92,112,.35); }
+  .list-panel .status.fix { background: rgba(232,93,4,.15); border: 1px solid rgba(232,93,4,.4); color: #9a3412; }
+  .list-panel tr.row-needs-fix td { background: #fff8f0 !important; }
+  .list-panel .alert-corregir { border: 1px solid rgba(232,93,4,.35); background: #fff7ed; color: #9a3412; border-radius: 12px; padding: 12px 14px; }
 </style>
 {% endblock %}
 {% block content %}
 <div class="list-panel">
 <header class="topbar">
   <div>
-    <h1 class="h4 mb-0">Documentos</h1>
-    <p class="subtitle">Listado con el mismo diseño visual de portada.</p>
+    <h1 class="h4 mb-0">Documentos{% if filters.corregir %} <span class="badge text-bg-warning">Por corregir</span>{% endif %}</h1>
+    <p class="subtitle">{% if filters.corregir %}Pendientes de completar datos desde Telegram o el OCR.{% else %}Listado con el mismo diseño visual de portada.{% endif %}</p>
   </div>
   <a href="{{ url_for('web.document_upload') }}" class="btn-panel"><i class="bi bi-upload me-1"></i> Subir documento</a>
 </header>
 <section class="content">
 
+{% if filters.corregir %}
+<div class="alert-corregir mb-0">
+  <i class="bi bi-pencil-square me-1"></i> Mostrando solo documentos que necesitan corrección.
+  <a href="{{ url_for('web.document_list') }}" class="ms-2">Ver todos</a>
+</div>
+{% endif %}
+
 <form method="get" class="card mb-3">
     <div class="card-body">
+        {% if filters.corregir %}<input type="hidden" name="corregir" value="1">{% endif %}
         <div class="row g-2">
             <div class="col-md-2">
                 <select name="doc_type" class="form-select form-select-sm">
@@ -103,12 +114,14 @@
             </thead>
             <tbody>
                 {% for d in pagination.items %}
-                <tr>
+                <tr class="{% if d.needs_correction %}row-needs-fix{% endif %}">
                     <td>{{ d.id }}</td>
                     <td>{{ d.vehicle.plate if d.vehicle else '-' }}</td>
                     <td>{{ doc_type_labels.get(d.doc_type, d.doc_type or '-') }}</td>
                     <td>
-                        {% if d.status == 'processed' %}
+                        {% if d.needs_correction %}
+                        <span class="status fix" title="{{ d.correction_summary or '' }}">Revisar</span>
+                        {% elif d.status == 'processed' %}
                         <span class="status ok">Procesado</span>
                         {% elif d.status == 'pending' %}
                         <span class="status pending">Pendiente</span>
@@ -143,7 +156,7 @@
                 {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
                     {% if p %}
                     <li class="page-item {% if p == pagination.page %}active{% endif %}">
-                        <a class="page-link" href="{{ url_for('web.document_list', page=p, doc_type=filters.doc_type, status=filters.status, vehicle_id=filters.vehicle_id, date_from=filters.date_from, date_to=filters.date_to, q=filters.q) }}">{{ p }}</a>
+                        <a class="page-link" href="{{ url_for('web.document_list', page=p, doc_type=filters.doc_type, status=filters.status, vehicle_id=filters.vehicle_id, date_from=filters.date_from, date_to=filters.date_to, q=filters.q, corregir=1 if filters.corregir else None) }}">{{ p }}</a>
                     </li>
                     {% else %}
                     <li class="page-item disabled"><span class="page-link">…</span></li>

@@ -27,7 +27,12 @@ from app.services.document_processor import (
 )
 from app.services.telegram_queue_service import TelegramTicketJob, enqueue_ticket
 from app.services.dedup_service import find_duplicate_by_hash, sha256_bytes
-from app.services.extraction_service import get_pending_document_fields
+from app.services.document_review_service import refresh_document_correction_status
+from app.services.extraction_service import (
+    get_or_create_vehicle_by_plate,
+    get_pending_document_fields,
+    normalize_plate,
+)
 from app.services.telegram_service import (
     get_file,
     send_message,
@@ -560,16 +565,14 @@ def handle_text_message(chat_id: int, user_id: int, text: str, token: str) -> No
     """Maneja mensajes de texto según el estado de la sesión."""
     session = get_or_create_session(user_id)
     text_clean = (text or "").strip().upper().replace(" ", "")
-    
+    plate_input = normalize_plate(text)
+
     # Asociar vehículo a ticket (fallback por texto si no usa botones)
     if session.pending_action == "waiting_plate_document":
-        if len(text_clean) >= 6 and text_clean.isalnum():
-            v = Vehicle.query.filter(Vehicle.plate == text_clean).first()
-            if not v:
-                v = Vehicle(plate=text_clean, active=True)
-                db.session.add(v)
-                db.session.flush()
-            if session.pending_document_id:
+        if plate_input:
+            v = get_or_create_vehicle_by_plate(plate_input, create=True)
+            if v and session.pending_document_id:
+                db.session.commit()
                 finalize_document_after_vehicle(
                     chat_id, user_id, token, session.pending_document_id, v.id
                 )
@@ -677,14 +680,13 @@ def handle_text_message(chat_id: int, user_id: int, text: str, token: str) -> No
     # Si está esperando matrícula
     if session.pending_action and session.pending_action.startswith("waiting_plate_"):
         action = session.pending_action.replace("waiting_plate_", "")
-        
-        if len(text_clean) >= 6 and text_clean.isalnum():
-            v = Vehicle.query.filter(Vehicle.plate == text_clean).first()
+
+        if plate_input:
+            v = get_or_create_vehicle_by_plate(plate_input, create=True)
             if not v:
-                v = Vehicle(plate=text_clean, active=True)
-                db.session.add(v)
-                db.session.commit()
-            
+                send_message(token, chat_id, "❌ Matrícula inválida. Escribe una matrícula válida (ej: 1234ABC).")
+                return
+            db.session.commit()
             session.pending_vehicle_id = v.id
             if action == "ticket":
                 session.pending_action = "upload_ticket"
@@ -694,21 +696,18 @@ def handle_text_message(chat_id: int, user_id: int, text: str, token: str) -> No
                 send_message(token, chat_id, f"✓ Vehículo: {v.plate}\n\n📸 Ahora envía la foto del documento.")
             db.session.commit()
             return
-        else:
-            send_message(token, chat_id, "❌ Matrícula inválida. Escribe una matrícula válida (ej: 1234ABC).")
-            return
-    
-    # Si es una matrícula válida (sin estado pendiente)
-    if len(text_clean) >= 6 and text_clean.isalnum():
-        v = Vehicle.query.filter(Vehicle.plate == text_clean).first()
-        if not v:
-            v = Vehicle(plate=text_clean, active=True)
-            db.session.add(v)
-            db.session.commit()
-        set_current_vehicle(user_id, v.id)
-        send_message(token, chat_id, f"✓ Vehículo seleccionado/creado: {v.plate}")
-        handle_start(chat_id, token)
+        send_message(token, chat_id, "❌ Matrícula inválida. Escribe una matrícula válida (ej: 1234ABC).")
         return
+
+    # Si es una matrícula válida (sin estado pendiente)
+    if plate_input:
+        v = get_or_create_vehicle_by_plate(plate_input, create=True)
+        if v:
+            db.session.commit()
+            set_current_vehicle(user_id, v.id)
+            send_message(token, chat_id, f"✓ Vehículo seleccionado/creado: {v.plate}")
+            handle_start(chat_id, token)
+            return
     
     # Comando /vehiculo
     if text.lower() == "/vehiculo":
@@ -731,8 +730,13 @@ def process_incoming_document(
     token: str,
     auto_ticket: bool = False,
 ) -> None:
-    """Encola foto/documento para procesarlo de uno en uno."""
-    position = enqueue_ticket(
+    """Encola foto; respuesta inmediata mínima (el resultado llega al terminar OCR)."""
+    session = get_or_create_session(user_id)
+    batch_ticket = auto_ticket or session.pending_action == "upload_ticket"
+    vehicle_id = (
+        session.pending_vehicle_id if session.pending_action == "upload_ticket" else None
+    )
+    enqueue_ticket(
         TelegramTicketJob(
             token=token,
             chat_id=chat_id,
@@ -740,54 +744,122 @@ def process_incoming_document(
             file_id=file_id,
             file_path_telegram=file_path_telegram,
             auto_ticket=auto_ticket,
+            batch_ticket=batch_ticket,
+            vehicle_id=vehicle_id,
         )
     )
-    if position <= 1:
-        send_message(token, chat_id, "📥 Documento recibido. Procesando...")
-    else:
+    send_message(token, chat_id, "📥 Ticket recibido.")
+
+
+def _send_batch_ticket_result(
+    token: str,
+    chat_id: int,
+    *,
+    duplicate: bool = False,
+    error: bool = False,
+    issues: list[str] | None = None,
+) -> None:
+    """Mensaje corto al usuario tras procesar un ticket en cola."""
+    if duplicate:
+        send_message(token, chat_id, "🚫 El ticket <b>no ha entrado</b>: duplicado.")
+        return
+    if error:
         send_message(
             token,
             chat_id,
-            f"📥 Ticket en cola (posición {position}). Se irá procesando en orden.",
+            "🚫 El ticket <b>no ha entrado</b>: error al procesar. Revisa en Documentos.",
         )
+        return
+    if issues:
+        falta = ", ".join(issues)
+        send_message(
+            token,
+            chat_id,
+            f"⚠️ Ticket <b>entrado</b>. Falta: {falta}.\n"
+            "Corrígelo en <b>Documentos</b> (menú superior).",
+        )
+        return
+    send_message(
+        token,
+        chat_id,
+        "✅ Ticket <b>entrado</b> con toda la información correcta.",
+    )
 
 
-def execute_ticket_job(job: TelegramTicketJob) -> None:
-    """Procesa un ticket de la cola (descarga, OCR, consumo)."""
+def _execute_batch_ticket_job(job: TelegramTicketJob) -> None:
+    """Tickets de combustible: cola, sin preguntas en Telegram; corrección en web."""
+    token = job.token
+    chat_id = job.chat_id
+    user_id = job.user_id
+    vehicle_id = job.vehicle_id
+
+    content = get_file(token, job.file_id)
+    if not content:
+        send_message(token, chat_id, "🚫 El ticket no ha entrado: no se pudo descargar la foto.")
+        return
+
+    file_hash = sha256_bytes(content)
+    if find_duplicate_by_hash(file_hash, vehicle_id=vehicle_id):
+        _send_batch_ticket_result(token, chat_id, duplicate=True)
+        return
+
+    upload_dir = Path(current_app.config["UPLOAD_FOLDER"])
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    ext = (job.file_path_telegram or "jpg").split(".")[-1].lower() or "jpg"
+    if ext not in ("jpg", "jpeg", "png"):
+        ext = "jpg"
+    unique_name = f"tg_{uuid.uuid4().hex[:12]}.{ext}"
+    (upload_dir / unique_name).write_bytes(content)
+
+    doc = Document(
+        vehicle_id=vehicle_id,
+        user_id=user_id,
+        file_path=unique_name,
+        file_hash=file_hash,
+        status=DocumentStatus.PENDING.value,
+    )
+    db.session.add(doc)
+    db.session.commit()
+
+    success, _msg = process_document(doc.id, force_doc_type=DocumentType.FUEL_TICKET.value)
+    doc = Document.query.get(doc.id)
+    if not doc:
+        _send_batch_ticket_result(token, chat_id, error=True)
+        return
+
+    extracted: dict = {}
+    if doc.extracted_json:
+        try:
+            extracted = json.loads(doc.extracted_json)
+        except json.JSONDecodeError:
+            pass
+
+    if not success:
+        refresh_document_correction_status(doc, extracted)
+        db.session.commit()
+        _send_batch_ticket_result(token, chat_id, error=True)
+        return
+
+    issues = refresh_document_correction_status(doc, extracted)
+    db.session.commit()
+    _send_batch_ticket_result(token, chat_id, issues=issues if issues else None)
+
+
+def _execute_interactive_document_job(job: TelegramTicketJob) -> None:
+    """Subir doc (ITV, seguro…): flujo con preguntas si faltan datos."""
     chat_id = job.chat_id
     user_id = job.user_id
     file_id = job.file_id
     file_path_telegram = job.file_path_telegram
     token = job.token
-    auto_ticket = job.auto_ticket
     session = get_or_create_session(user_id)
 
-    is_document_flow = session.pending_action == "upload_document" and not auto_ticket
-    is_ticket_flow = auto_ticket or session.pending_action in ("upload_ticket", "upload_document")
-
-    if not is_ticket_flow:
-        send_message(token, chat_id, "⚠️ Usa /start y elige Subir ticket o Subir doc.")
+    if session.pending_action != "upload_document":
+        send_message(token, chat_id, "⚠️ Usa /start y elige <b>Subir doc</b>.")
         return
 
-    # Vehículo: solo si el usuario lo eligió en Subir ticket/doc, o lo detecta el OCR después.
-    # Nunca usar current_vehicle_id de la sesión.
-    from_menu = session.pending_action in ("upload_ticket", "upload_document")
-    if from_menu:
-        vehicle_id = session.pending_vehicle_id
-        if session.pending_action == "upload_ticket" and not vehicle_id:
-            send_message(
-                token,
-                chat_id,
-                "⚠️ Primero elige el vehículo con <b>Subir ticket</b> y luego envía la foto.",
-            )
-            return
-    else:
-        vehicle_id = None
-
-    if auto_ticket or session.pending_action == "upload_ticket":
-        send_message(token, chat_id, "⛽ Procesando ticket de combustible...")
-    else:
-        send_message(token, chat_id, "⏳ Procesando documento (detectando tipo)...")
+    vehicle_id = session.pending_vehicle_id
+    send_message(token, chat_id, "⏳ Procesando documento (detectando tipo)...")
 
     content = get_file(token, file_id)
     if not content:
@@ -801,21 +873,18 @@ def execute_ticket_job(job: TelegramTicketJob) -> None:
         send_message(
             token,
             chat_id,
-            f"⚠️ Documento duplicado detectado (#{existing_dup.id}). No se ha procesado de nuevo.",
+            f"🚫 El documento <b>no ha entrado</b>: duplicado (#{existing_dup.id}).",
         )
         clear_pending_state(user_id)
-        handle_start(chat_id, token)
         return
 
-    # Guardar archivo
     upload_dir = Path(current_app.config["UPLOAD_FOLDER"])
     upload_dir.mkdir(parents=True, exist_ok=True)
     ext = (file_path_telegram or "jpg").split(".")[-1].lower() or "jpg"
     if ext not in ("jpg", "jpeg", "png"):
         ext = "jpg"
     unique_name = f"tg_{uuid.uuid4().hex[:12]}.{ext}"
-    filepath = upload_dir / unique_name
-    filepath.write_bytes(content)
+    (upload_dir / unique_name).write_bytes(content)
 
     doc = Document(
         vehicle_id=vehicle_id,
@@ -827,26 +896,23 @@ def execute_ticket_job(job: TelegramTicketJob) -> None:
     db.session.add(doc)
     db.session.commit()
 
-    force_type = None
-    if auto_ticket or session.pending_action == "upload_ticket":
-        force_type = DocumentType.FUEL_TICKET.value
-    success, msg = process_document(doc.id, force_doc_type=force_type)
+    success, msg = process_document(doc.id, force_doc_type=None)
     doc = Document.query.get(doc.id)
 
     extracted = {}
-    if doc.extracted_json:
+    if doc and doc.extracted_json:
         try:
             extracted = json.loads(doc.extracted_json)
         except json.JSONDecodeError:
             pass
 
-    if success:
+    if success and doc:
         summary = build_summary_for_telegram(extracted, DOC_TYPE_LABELS)
         pending = get_pending_document_fields(
             extracted, doc.doc_type or "other", doc.vehicle_id, doc
         )
 
-        if doc and not doc.vehicle_id:
+        if not doc.vehicle_id:
             ask_vehicle_for_document(
                 chat_id,
                 user_id,
@@ -878,9 +944,17 @@ def execute_ticket_job(job: TelegramTicketJob) -> None:
         send_message(
             token,
             chat_id,
-            f"❌ Error: {msg[:300]}. Puedes reprocesarlo desde el panel web.",
+            f"❌ Error: {(msg or '')[:300]}. Puedes reprocesarlo desde el panel web.",
         )
         handle_start(chat_id, token)
+
+
+def execute_ticket_job(job: TelegramTicketJob) -> None:
+    """Procesa un trabajo de la cola (ticket en lote o documento interactivo)."""
+    if job.batch_ticket:
+        _execute_batch_ticket_job(job)
+    else:
+        _execute_interactive_document_job(job)
 
 
 @telegram_bp.route("/webhook", methods=["POST"])
@@ -958,21 +1032,10 @@ def process_update(data: dict, token: str) -> None:
         pending = session.pending_action or ""
 
         if pending == "upload_document":
-            # Subir doc: OCR detecta tipo (seguro, ITV, factura, etc.)
             auto_ticket = False
-        elif pending == "upload_ticket":
-            auto_ticket = True
-        elif photo:
-            # Foto sin menú previo = ticket de combustible automático
-            auto_ticket = True
         else:
-            send_message(
-                token,
-                chat_id,
-                "📋 Elige primero <b>Subir ticket</b> o <b>Subir doc</b> en el menú (/start).",
-            )
-            handle_start(chat_id, token)
-            return
+            # Cualquier foto = ticket en cola (varias seguidas, foto rápida o Subir ticket)
+            auto_ticket = True
 
         process_incoming_document(
             chat_id,

@@ -269,12 +269,15 @@ def vehicle_list():
 @web_bp.route("/vehiculos/nuevo", methods=["GET", "POST"])
 def vehicle_create():
     if request.method == "POST":
-        plate = (request.form.get("plate") or "").strip().upper()
+        from app.services.extraction_service import find_vehicle_by_plate, normalize_plate
+
+        plate = normalize_plate(request.form.get("plate") or "")
         if not plate:
-            flash("La matrícula es obligatoria.", "danger")
+            flash("La matrícula es obligatoria (sin guiones, ej: 1234ABC).", "danger")
             return render_template("vehicles/form.html", vehicle=None)
-        if Vehicle.query.filter_by(plate=plate).first():
-            flash(f"Ya existe un vehículo con matrícula {plate}.", "danger")
+        existing = find_vehicle_by_plate(plate)
+        if existing:
+            flash(f"Ya existe un vehículo con matrícula {existing.plate}.", "danger")
             return render_template("vehicles/form.html", vehicle=None)
         v = Vehicle(
             plate=plate,
@@ -335,8 +338,11 @@ def document_list():
     date_from = request.args.get("date_from")
     date_to = request.args.get("date_to")
     q_text = (request.args.get("q") or "").strip()
+    corregir = request.args.get("corregir", "").strip() in ("1", "true", "yes")
 
     q = Document.query
+    if corregir:
+        q = q.filter(Document.needs_correction.is_(True))
     if doc_type:
         q = q.filter(Document.doc_type == doc_type)
     if status:
@@ -375,6 +381,7 @@ def document_list():
             "date_from": date_from,
             "date_to": date_to,
             "q": q_text,
+            "corregir": corregir,
         },
     )
 
@@ -571,6 +578,9 @@ def document_edit(did):
             if concept:
                 maintenance.concept = concept
 
+        from app.services.document_review_service import refresh_document_correction_status
+
+        refresh_document_correction_status(doc)
         db.session.commit()
         flash("Documento actualizado correctamente.", "success")
         return redirect(next_url)
