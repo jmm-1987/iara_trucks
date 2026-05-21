@@ -47,6 +47,14 @@ class Config:
     EMAIL_IMAP_USER = os.environ.get("EMAIL_IMAP_USER", "")
     EMAIL_IMAP_PASSWORD = os.environ.get("EMAIL_IMAP_PASSWORD", "")
     EMAIL_IMAP_FOLDER = os.environ.get("EMAIL_IMAP_FOLDER", "INBOX")
+    # Remitentes permitidos (coma-separados). Solo se procesan adjuntos de estos emails.
+    EMAIL_ALLOWED_SENDERS = frozenset(
+        addr.strip().lower()
+        for addr in os.environ.get(
+            "EMAIL_ALLOWED_SENDERS", "logisticavmateos@gmail.com"
+        ).split(",")
+        if addr.strip()
+    )
 
     # Logging
     LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")

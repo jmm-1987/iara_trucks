@@ -109,6 +109,28 @@ class TestValidateAndEnrich:
         assert result["date_issue"] == "2026-01-01"
         assert result["date_due"] == "2026-12-31"
 
+    def test_workshop_invoice_uses_explicit_invoice_dates(self):
+        extracted = {
+            "doc_type": "workshop_invoice",
+            "invoice_date": "2026-05-03",
+            "payment_due_date": "2026-06-05",
+            "date_issue": "2026-06-05",
+            "date_due": None,
+        }
+        result = validate_and_enrich(extracted)
+        assert result["date_issue"] == "2026-05-03"
+        assert result["date_due"] == "2026-06-05"
+
+    def test_workshop_invoice_swaps_inverted_dates(self):
+        extracted = {
+            "doc_type": "workshop_invoice",
+            "date_issue": "2026-06-05",
+            "date_due": "2026-05-03",
+        }
+        result = validate_and_enrich(extracted)
+        assert result["date_issue"] == "2026-05-03"
+        assert result["date_due"] == "2026-06-05"
+
 
 class TestPendingDocumentFields:
     def test_itv_pending_date_due(self):

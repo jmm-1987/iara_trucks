@@ -180,6 +180,47 @@ def apply_insurance_date_rules(result: dict) -> dict:
     return result
 
 
+COMMERCIAL_INVOICE_DOC_TYPES = frozenset(
+    {"workshop_invoice", "invoice", "tires_invoice", "delivery_note"}
+)
+
+
+def apply_commercial_invoice_date_rules(result: dict) -> dict:
+    """
+    Corrige fechas en facturas: emisión (issue) vs vencimiento de pago (due).
+    Si el modelo las invierte, intercambia (el vencimiento suele ser >= fecha factura).
+    """
+    doc_type = (result.get("doc_type") or "").lower()
+    if doc_type not in COMMERCIAL_INVOICE_DOC_TYPES:
+        return result
+
+    d_issue = normalize_date(result.get("date_issue"))
+    d_due = normalize_date(result.get("date_due"))
+
+    if d_issue and d_due:
+        from datetime import date as date_cls
+
+        di = date_cls.fromisoformat(d_issue)
+        dd = date_cls.fromisoformat(d_due)
+        if dd < di:
+            logger.info(
+                "Factura %s: fechas invertidas (issue=%s, due=%s), corrigiendo",
+                doc_type,
+                d_issue,
+                d_due,
+            )
+            d_issue, d_due = d_due, d_issue
+
+    result["date_issue"] = d_issue
+    result["date_due"] = d_due
+    if d_issue:
+        result["invoice_date"] = d_issue
+    if d_due:
+        result["payment_due_date"] = d_due
+
+    return result
+
+
 def validate_and_enrich(extracted: dict, vehicle_plate: str | None = None) -> dict:
     """
     Valida, normaliza y enriquece los datos extraídos.
@@ -191,10 +232,26 @@ def validate_and_enrich(extracted: dict, vehicle_plate: str | None = None) -> di
     result = dict(extracted)
 
     # Fechas
-    if result.get("date_issue"):
-        result["date_issue"] = normalize_date(result["date_issue"])
-    if result.get("date_due"):
-        result["date_due"] = normalize_date(result["date_due"])
+    for key in (
+        "date_issue",
+        "date_due",
+        "invoice_date",
+        "payment_due_date",
+    ):
+        if result.get(key):
+            result[key] = normalize_date(result[key])
+
+    doc_type = (result.get("doc_type") or "").lower()
+    if doc_type in COMMERCIAL_INVOICE_DOC_TYPES:
+        # Campos explícitos tienen prioridad sobre date_issue/date_due genéricos
+        if result.get("invoice_date"):
+            result["date_issue"] = result["invoice_date"]
+        if result.get("payment_due_date"):
+            result["date_due"] = result["payment_due_date"]
+        if result.get("date_issue"):
+            result["invoice_date"] = result["date_issue"]
+        if result.get("date_due"):
+            result["payment_due_date"] = result["date_due"]
 
     # Importes en amounts
     amounts = result.get("amounts") or {}
@@ -231,6 +288,7 @@ def validate_and_enrich(extracted: dict, vehicle_plate: str | None = None) -> di
         )
 
     result = apply_insurance_date_rules(result)
+    result = apply_commercial_invoice_date_rules(result)
 
     return result
 
@@ -258,8 +316,15 @@ def get_pending_document_fields(
         return pending
 
     if doc_type_val == "fuel_ticket":
-        fuel = extracted.get("fuel") or {}
-        if not fuel.get("liters"):
+        liters_ok = False
+        if doc is not None:
+            fe = getattr(doc, "fuel_entry", None)
+            if fe is not None and fe.liters is not None and float(fe.liters) > 0:
+                liters_ok = True
+        if not liters_ok:
+            fuel = extracted.get("fuel") or {}
+            liters_ok = bool(fuel.get("liters"))
+        if not liters_ok:
             pending.append(
                 {
                     "field": "fuel_liters",

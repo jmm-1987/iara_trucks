@@ -18,6 +18,53 @@ FIELD_LABELS = {
 }
 
 
+def _document_kilometers(doc: Document) -> int | None:
+    """Kilómetros efectivos: prioriza registro de combustible y luego el documento."""
+    if doc.fuel_entry is not None and doc.fuel_entry.kilometers is not None:
+        return doc.fuel_entry.kilometers
+    return doc.kilometers
+
+
+def _fuel_liters_present(doc: Document, extracted: dict) -> bool:
+    if doc.fuel_entry is not None and doc.fuel_entry.liters is not None:
+        try:
+            if float(doc.fuel_entry.liters) > 0:
+                return True
+        except (TypeError, ValueError):
+            pass
+    fuel = extracted.get("fuel") or {}
+    liters = fuel.get("liters")
+    if liters is not None:
+        try:
+            return float(liters) > 0
+        except (TypeError, ValueError):
+            pass
+    return False
+
+
+def sync_extracted_from_document(doc: Document) -> dict:
+    """Refleja en extracted_json los datos ya corregidos en el panel web."""
+    extracted = _load_extracted(doc)
+    if doc.issue_date:
+        extracted["date_issue"] = doc.issue_date.isoformat()
+    if doc.due_date:
+        extracted["date_due"] = doc.due_date.isoformat()
+    km = _document_kilometers(doc)
+    if km is not None:
+        extracted["kilometers"] = km
+        extracted.pop("km_needs_confirmation", None)
+        fuel = extracted.setdefault("fuel", {})
+        fuel["kilometers"] = km
+    if doc.fuel_entry is not None:
+        fuel = extracted.setdefault("fuel", {})
+        if doc.fuel_entry.liters is not None:
+            fuel["liters"] = float(doc.fuel_entry.liters)
+        if doc.fuel_entry.price_per_liter is not None:
+            fuel["price_per_liter"] = float(doc.fuel_entry.price_per_liter)
+    doc.extracted_json = json.dumps(extracted, ensure_ascii=False, default=str)
+    return extracted
+
+
 def _load_extracted(doc: Document) -> dict:
     if not doc.extracted_json:
         return {}
@@ -45,13 +92,13 @@ def collect_correction_issues(doc: Document, extracted: dict | None = None) -> l
             issues.append(label)
 
     if doc.doc_type == DocumentType.FUEL_TICKET.value:
-        if doc.vehicle_id and not FuelEntry.query.filter_by(document_id=doc.id).first():
-            if "consumos" not in issues:
+        if not _fuel_liters_present(doc, extracted):
+            if "litros" not in issues:
+                issues.append("litros")
+        if doc.vehicle_id and not doc.fuel_entry and not _fuel_liters_present(doc, extracted):
+            if "registro en consumos" not in issues:
                 issues.append("registro en consumos")
-        if extracted.get("km_needs_confirmation"):
-            if "kilómetros" not in issues:
-                issues.append("kilómetros")
-        elif doc.kilometers is None and not extracted.get("kilometers"):
+        if _document_kilometers(doc) is None and not extracted.get("kilometers"):
             if "kilómetros" not in issues:
                 issues.append("kilómetros")
 

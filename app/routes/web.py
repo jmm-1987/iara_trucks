@@ -537,22 +537,39 @@ def document_edit(did):
         doc.total_amount = total
         doc.kilometers = kilometers
 
-        # Sincronización con registro de combustible (si existe)
-        fuel = FuelEntry.query.filter_by(document_id=doc.id).first()
-        if fuel:
+        # Sincronización con registro de combustible (ticket gasoil)
+        if doc_type == DocumentType.FUEL_TICKET.value:
             liters = _parse_decimal(request.form.get("fuel_liters"))
             ppl = _parse_decimal(request.form.get("fuel_price_per_liter"))
-            if liters is not None and liters > 0:
-                fuel.liters = liters
-            if ppl is not None and ppl > 0:
-                fuel.price_per_liter = ppl
-            fuel.vehicle_id = vehicle_id
-            fuel.date = issue_date or fuel.date
-            fuel.station = vendor
-            fuel.subtotal_amount = subtotal
-            fuel.tax_amount = tax
-            fuel.total_amount = total
-            fuel.kilometers = kilometers
+            fuel = FuelEntry.query.filter_by(document_id=doc.id).first()
+            if not fuel and liters is not None and liters > 0:
+                fuel = FuelEntry(
+                    document_id=doc.id,
+                    vehicle_id=vehicle_id,
+                    date=issue_date or datetime.utcnow().date(),
+                    liters=liters,
+                    price_per_liter=ppl or Decimal("0"),
+                    subtotal_amount=subtotal,
+                    tax_amount=tax,
+                    total_amount=total,
+                    station=vendor,
+                    kilometers=kilometers,
+                )
+                if fuel.price_per_liter <= 0 and total and liters > 0:
+                    fuel.price_per_liter = total / liters
+                db.session.add(fuel)
+            elif fuel:
+                if liters is not None and liters > 0:
+                    fuel.liters = liters
+                if ppl is not None and ppl > 0:
+                    fuel.price_per_liter = ppl
+                fuel.vehicle_id = vehicle_id
+                fuel.date = issue_date or fuel.date
+                fuel.station = vendor
+                fuel.subtotal_amount = subtotal
+                fuel.tax_amount = tax
+                fuel.total_amount = total
+                fuel.kilometers = kilometers
 
         # Sincronización con gasto (si existe)
         expense = ExpenseEntry.query.filter_by(document_id=doc.id).first()
@@ -578,8 +595,14 @@ def document_edit(did):
             if concept:
                 maintenance.concept = concept
 
-        from app.services.document_review_service import refresh_document_correction_status
+        from app.services.document_review_service import (
+            refresh_document_correction_status,
+            sync_extracted_from_document,
+        )
 
+        if doc_type == DocumentType.FUEL_TICKET.value:
+            ensure_fuel_entry_for_document(doc)
+        sync_extracted_from_document(doc)
         refresh_document_correction_status(doc)
         db.session.commit()
         flash("Documento actualizado correctamente.", "success")

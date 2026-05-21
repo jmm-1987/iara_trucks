@@ -63,24 +63,39 @@
     </div>
     <div class="col-lg-6">
         <div class="card mb-3">
-            <div class="card-header">Imagen</div>
+            <div class="card-header">Vista previa</div>
             <div class="card-body text-center">
                 {% set fname = doc.file_path.replace('\\','/').split('/')[-1] if doc.file_path else '' %}
                 {% set ext = fname.split('.')[-1]|lower if fname else '' %}
+                {% set file_url = url_for('web.serve_upload', filename=fname) %}
                 {% if doc.file_path == 'manual' %}
                 <p class="text-muted mb-0">Entrada manual (sin archivo adjunto).</p>
                 {% elif ext in ['jpg','jpeg','png'] %}
-                <img src="{{ url_for('web.serve_upload', filename=fname) }}" 
-                     class="img-fluid document-thumbnail" 
-                     style="max-height: 400px; cursor: zoom-in;" 
+                <img src="{{ file_url }}"
+                     class="img-fluid document-thumbnail"
+                     style="max-height: 400px; cursor: zoom-in;"
                      alt="Documento"
-                     data-bs-toggle="modal" 
+                     data-bs-toggle="modal"
                      data-bs-target="#imageModal"
-                     onclick="openImageModal('{{ url_for('web.serve_upload', filename=fname) }}')"
+                     onclick="openImageModal('{{ file_url }}')"
                      onerror="this.parentElement.innerHTML='<p class=text-muted>Imagen no accesible</p>';">
                 <p class="text-muted mt-2 small">Haz clic en la imagen para ampliar</p>
+                {% elif ext == 'pdf' %}
+                <div class="text-start mb-2">
+                    <a href="{{ file_url }}" class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener">
+                        <i class="bi bi-box-arrow-up-right me-1"></i> Abrir PDF
+                    </a>
+                </div>
+                <iframe src="{{ file_url }}"
+                        title="Documento PDF #{{ doc.id }}"
+                        class="w-100 rounded border"
+                        style="height: 480px; max-height: 70vh; background: #fff;"
+                        loading="lazy"></iframe>
                 {% else %}
-                <p class="text-muted">Archivo: {{ doc.file_path }}</p>
+                <p class="text-muted mb-2">Archivo: {{ doc.file_path }}</p>
+                <a href="{{ file_url }}" class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener">
+                    Abrir archivo
+                </a>
                 {% endif %}
             </div>
         </div>

@@ -14,6 +14,7 @@ import imaplib
 import email
 import logging
 from email.message import Message
+from email.utils import parseaddr
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -55,6 +56,22 @@ def _get_imap_connection() -> imaplib.IMAP4 | imaplib.IMAP4_SSL | None:
     except Exception as e:
         logger.error("No se pudo conectar al servidor IMAP %s: %s", host, e)
         return None
+
+
+def _get_sender_email(msg: Message) -> str | None:
+    """Extrae la dirección del remitente (cabecera From), en minúsculas."""
+    _, addr = parseaddr(msg.get("From", ""))
+    if not addr:
+        return None
+    return addr.strip().lower()
+
+
+def _is_allowed_sender(msg: Message) -> bool:
+    allowed = current_app.config.get("EMAIL_ALLOWED_SENDERS") or frozenset()
+    sender = _get_sender_email(msg)
+    if not sender:
+        return False
+    return sender in allowed
 
 
 def _iter_attachments(msg: Message):
@@ -112,6 +129,14 @@ def process_incoming_emails() -> None:
 
                 raw = msg_data[0][1]
                 msg = email.message_from_bytes(raw)
+
+                if not _is_allowed_sender(msg):
+                    logger.debug(
+                        "Email IMAP %s omitido: remitente %s no está en EMAIL_ALLOWED_SENDERS",
+                        msg_id.decode("utf-8", errors="ignore"),
+                        _get_sender_email(msg) or "(desconocido)",
+                    )
+                    continue
 
                 attachments_created = 0
 
